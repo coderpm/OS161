@@ -100,7 +100,7 @@ boot(void)
 	kprintf("%s", harvard_copyright);
 	kprintf("\n");
 
-	kprintf("Put-your-group-name-here's system version %s (%s #%d)\n", 
+	kprintf("marora3 system version %s (%s #%d)\n", 
 		GROUP_VERSION, buildconfig, buildversion);
 	kprintf("\n");
 
@@ -121,6 +121,7 @@ boot(void)
 
 	/* Late phase of initialization. */
 	vm_bootstrap();
+	kprintf("Number of CPUS...\n");
 	kprintf_bootstrap();
 	thread_start_cpus();
 
