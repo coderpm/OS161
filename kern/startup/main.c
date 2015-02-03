@@ -28,7 +28,7 @@
  */
 
 /*
- * Main.
+ * Main.    This is just the test 
  */
 
 #include <types.h>
