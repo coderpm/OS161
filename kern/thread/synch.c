@@ -288,7 +288,7 @@ cv_create(const char *name)
         
         // add stuff here as needed
         /*
-         * @Author: PM
+         * @Author: Student
          * Implementing Condition Variable by defining the name
          * and initializing the wait channel
          */
@@ -364,3 +364,59 @@ cv_broadcast(struct cv *cv, struct lock *lock)
 	wchan_wakeall(cv->cv_wchan);
 	}
 }
+///////////////////////////////////////////////
+//RW Locks
+
+
+struct rwlock *
+rwlock_create(const char *name)
+{
+	struct rwlock *rw;
+
+	rw = kmalloc(sizeof(rw));
+	if(rw==NULL){
+		return NULL;
+	}
+
+	rw->rwlock_name=strdup(name);
+	if(rw->rwlock_name==NULL){
+		kfree(rw);
+		return NULL;
+	}
+
+	return rw;
+}
+void
+rwlock_destroy(struct rwlock *rw_lock)
+{
+	KASSERT(rw_lock != NULL);
+
+	        // add stuff here as needed
+	        kfree(rw_lock->rwlock_name);
+	        kfree(rw_lock);
+}
+void
+rwlock_acquire_read(struct rwlock *)
+{
+
+}
+
+void
+rwlock_release_read(struct rwlock *)
+{
+
+}
+
+void
+rwlock_acquire_write(struct rwlock *)
+{
+
+}
+
+void
+rwlock_release_write(struct rwlock *){
+
+
+}
+
+
