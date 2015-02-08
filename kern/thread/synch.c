@@ -40,6 +40,7 @@
 #include <current.h>
 #include <synch.h>
 
+
 ////////////////////////////////////////////////////////////
 //
 // Semaphore.
@@ -87,8 +88,7 @@ sem_destroy(struct semaphore *sem)
         kfree(sem);
 }
 
-void 
-P(struct semaphore *sem)
+void P(struct semaphore *sem)
 {
         KASSERT(sem != NULL);
 
@@ -164,7 +164,14 @@ lock_create(const char *name)
         }
         
         // add stuff here as needed
-        
+        lock->lock_wchan = wchan_create(lock->lk_name);
+        	if (lock->lock_wchan == NULL) {
+        		kfree(lock->lk_name);
+        		kfree(lock);
+        		return NULL;
+        	}
+        spinlock_init(&lock->lk_spinlock);
+       // lock->lock_hold=0;
         return lock;
 }
 
@@ -174,7 +181,8 @@ lock_destroy(struct lock *lock)
         KASSERT(lock != NULL);
 
         // add stuff here as needed
-        
+        wchan_destroy(lock->lock_wchan);
+        spinlock_cleanup(&lock->lk_spinlock);
         kfree(lock->lk_name);
         kfree(lock);
 }
@@ -183,26 +191,70 @@ void
 lock_acquire(struct lock *lock)
 {
         // Write this
+	struct thread *mythread;
+	KASSERT(lock != NULL);
+    KASSERT(curthread->t_in_interrupt == false);
 
-        (void)lock;  // suppress warning until code gets written
+
+
+	spinlock_acquire(&lock->lk_spinlock);
+	if(lock->lock_hold==1){
+		wchan_lock(lock->lock_wchan);
+		spinlock_release(&lock->lk_spinlock);
+		wchan_sleep(lock->lock_wchan);
+	}
+	else if(lock->lock_hold==0){
+		if (CURCPU_EXISTS()) {
+				mythread = curthread;
+				if (lock->lk_thread == mythread) {
+					panic("Deadlock on thread %p\n", lock);
+				}
+			}
+			else {
+				mythread = NULL;
+			}
+		 lock->lock_hold= 1;
+		 lock->lk_thread = mythread;
+		 spinlock_release(&lock->lk_spinlock);
+	}
+	  //KASSERT(lock->lock_count > 0);
+
+       //(void)lock;  // suppress warning until code gets written
 }
 
 void
 lock_release(struct lock *lock)
 {
         // Write this
+    KASSERT(lock != NULL);
+    spinlock_acquire(&lock->lk_spinlock);
 
-        (void)lock;  // suppress warning until code gets written
+    lock->lock_hold=0;
+    KASSERT(lock->lock_hold== 0);
+    lock->lk_thread= NULL;
+    wchan_wakeone(lock->lock_wchan);
+
+    spinlock_release(&lock->lk_spinlock);
+       // (void)lock;  // suppress warning until code gets written
 }
 
 bool
 lock_do_i_hold(struct lock *lock)
 {
         // Write this
+	if (!CURCPU_EXISTS()) {
+			return true;
+		}
+//	if(lock->lk_holder== curcpu->c_self){
+//		return true;
+//	}
+	//KASSERT(lock->lk_thread != NULL);
+	//KASSERT(lock != NULL);
 
-        (void)lock;  // suppress warning until code gets written
 
-        return true; // dummy until code gets written
+        //(void)lock;  // suppress warning until code gets written
+
+        return (lock->lk_thread== curthread); // dummy until code gets written
 }
 
 ////////////////////////////////////////////////////////////
