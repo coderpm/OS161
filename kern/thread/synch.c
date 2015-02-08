@@ -198,7 +198,7 @@ lock_acquire(struct lock *lock)
 
 	spinlock_acquire(&lock->lk_spinlock);
 
-	if(lock->lock_hold==1){
+	while(lock->lock_hold==1){
 		wchan_lock(lock->lock_wchan);
 		spinlock_release(&lock->lk_spinlock);
 		wchan_sleep(lock->lock_wchan);
@@ -287,7 +287,20 @@ cv_create(const char *name)
         }
         
         // add stuff here as needed
-        
+        /*
+         * @Author: PM
+         * Implementing Condition Variable by defining the name
+         * and initializing the wait channel
+         */
+
+        cv->cv_wchan= wchan_create(cv->cv_name);
+		if (cv->cv_wchan == NULL) {
+			kfree(cv->cv_name);
+			kfree(cv);
+			return NULL;
+		}
+
+
         return cv;
 }
 
@@ -306,22 +319,48 @@ void
 cv_wait(struct cv *cv, struct lock *lock)
 {
         // Write this
-        (void)cv;    // suppress warning until code gets written
-        (void)lock;  // suppress warning until code gets written
+//        (void)cv;    // suppress warning until code gets written
+  //      (void)lock;  // suppress warning until code gets written
+
+        /*
+         * Author: Student
+         */
+        if(lock_do_i_hold(lock)) {
+        
+		wchan_lock(cv->cv_wchan);
+		//Release the supplied lock
+		lock_release(lock);
+			wchan_sleep(cv->cv_wchan);
+
+		lock_acquire(lock);
+				
+        }
 }
 
 void
 cv_signal(struct cv *cv, struct lock *lock)
 {
         // Write this
-	(void)cv;    // suppress warning until code gets written
-	(void)lock;  // suppress warning until code gets written
+//	(void)cv;    // suppress warning until code gets written
+//	(void)lock;  // suppress warning until code gets written
+
+	/*
+	 * Author: Student
+	 * Wake up the wchan which is sleeping on the CV
+	 */
+	if(lock_do_i_hold(lock))
+	{
+		wchan_wakeone(cv->cv_wchan);
+	}
 }
 
 void
 cv_broadcast(struct cv *cv, struct lock *lock)
 {
 	// Write this
-	(void)cv;    // suppress warning until code gets written
-	(void)lock;  // suppress warning until code gets written
+//	(void)cv;    // suppress warning until code gets written
+//	(void)lock;  // suppress warning until code gets written
+	if(lock_do_i_hold(lock)) {
+	wchan_wakeall(cv->cv_wchan);
+	}
 }

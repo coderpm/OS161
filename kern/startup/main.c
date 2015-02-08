@@ -28,7 +28,7 @@
  */
 
 /*
- * Main.    This is just the test 
+ * Main.
  */
 
 #include <types.h>
@@ -94,12 +94,13 @@ boot(void)
 	 * anything at all. You can make it larger though (it's in
 	 * dev/generic/console.c).
 	 */
+
 	kprintf("\n");
 	kprintf("OS/161 base system version %s\n", BASE_VERSION);
 	kprintf("%s", harvard_copyright);
 	kprintf("\n");
 
-	kprintf("marora3 system version %s (%s #%d)\n", 
+	kprintf("prathamm@buffalo.edu's system version %s (%s #%d)\n",
 		GROUP_VERSION, buildconfig, buildversion);
 	kprintf("\n");
 
@@ -120,7 +121,6 @@ boot(void)
 
 	/* Late phase of initialization. */
 	vm_bootstrap();
-	kprintf("Number of CPUS...\n");
 	kprintf_bootstrap();
 	thread_start_cpus();
 
