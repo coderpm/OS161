@@ -171,7 +171,8 @@ lock_create(const char *name)
         		return NULL;
         	}
         spinlock_init(&lock->lk_spinlock);
-       // lock->lock_hold=0;
+        lock->lock_hold=0;
+        lock->lk_thread= NULL;
         return lock;
 }
 
@@ -195,15 +196,15 @@ lock_acquire(struct lock *lock)
 	KASSERT(lock != NULL);
     KASSERT(curthread->t_in_interrupt == false);
 
-
-
 	spinlock_acquire(&lock->lk_spinlock);
+
 	if(lock->lock_hold==1){
 		wchan_lock(lock->lock_wchan);
 		spinlock_release(&lock->lk_spinlock);
 		wchan_sleep(lock->lock_wchan);
+		spinlock_acquire(&lock->lk_spinlock);
 	}
-	else if(lock->lock_hold==0){
+/*	else if(lock->lock_hold==0){
 		if (CURCPU_EXISTS()) {
 				mythread = curthread;
 				if (lock->lk_thread == mythread) {
@@ -212,11 +213,16 @@ lock_acquire(struct lock *lock)
 			}
 			else {
 				mythread = NULL;
-			}
-		 lock->lock_hold= 1;
-		 lock->lk_thread = mythread;
-		 spinlock_release(&lock->lk_spinlock);
+			} */
+
+	if(curthread!= NULL){
+				 mythread = curthread;
+				 lock->lk_thread = mythread;
 	}
+	lock->lock_hold= 1;
+
+	spinlock_release(&lock->lk_spinlock);
+
 	  //KASSERT(lock->lock_count > 0);
 
        //(void)lock;  // suppress warning until code gets written
@@ -250,11 +256,13 @@ lock_do_i_hold(struct lock *lock)
 //	}
 	//KASSERT(lock->lk_thread != NULL);
 	//KASSERT(lock != NULL);
-
+	bool value= false;
 
         //(void)lock;  // suppress warning until code gets written
-
-        return (lock->lk_thread== curthread); // dummy until code gets written
+	spinlock_acquire(&lock->lk_spinlock);
+        value= (lock->lk_thread== curthread); // dummy until code gets written
+        spinlock_release(&lock->lk_spinlock);
+        return value;
 }
 
 ////////////////////////////////////////////////////////////
