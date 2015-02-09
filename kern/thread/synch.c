@@ -448,14 +448,13 @@ rwlock_acquire_write(struct rwlock *rw_lock){
 		}
 	}
 
-
 	lock_release(rw_lock->rwlock_lock);
 }
 
 void
 rwlock_release_write(struct rwlock *rw_lock){
 
-	rw_lock->rwlock_semaphore->sem_count=MAX_READ;
+	rw_lock->rwlock_semaphore->sem_count=MAX_READ-1;
 	V(rw_lock->rwlock_semaphore);
 
 
