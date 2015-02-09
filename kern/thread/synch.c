@@ -411,9 +411,9 @@ rwlock_destroy(struct rwlock *rw_lock)
 	KASSERT(rw_lock != NULL);
 
 	        // add stuff here as needed
+		sem_destroy(rw_lock->rwlock_semaphore);
+		lock_destroy(rw_lock->rwlock_lock);
 	    kfree(rw_lock->rwlock_name);
-		kfree(rw_lock->rwlock_semaphore);
-		kfree(rw_lock->rwlock_lock);
 	    kfree(rw_lock);
 }
 void
