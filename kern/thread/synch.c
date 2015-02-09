@@ -440,9 +440,12 @@ rwlock_acquire_write(struct rwlock *rw_lock){
 	{
 		if(rw_lock->rwlock_semaphore->sem_count!=MAX_READ)
 			continue;
-
-		rw_lock->rwlock_semaphore->sem_count=1;
-		P(rw_lock->rwlock_semaphore);
+		else if(rw_lock->rwlock_semaphore->sem_count==MAX_READ)
+		{
+			rw_lock->rwlock_semaphore->sem_count=1;
+			P(rw_lock->rwlock_semaphore);
+			break;
+		}
 	}
 
 
