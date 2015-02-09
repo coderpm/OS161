@@ -378,45 +378,81 @@ rwlock_create(const char *name)
 		return NULL;
 	}
 
-	rw->rwlock_name=strdup(name);
+	rw->rwlock_name=kstrdup(name);
 	if(rw->rwlock_name==NULL){
 		kfree(rw);
 		return NULL;
 	}
 
+
+	//Create Semaphore
+	rw->rwlock_semaphore = sem_create(rw->rwlock_name,MAX_READ);
+	if (rw->rwlock_semaphore == NULL) {
+			kfree(rw->rwlock_name);
+			kfree(rw);
+			return NULL;
+	}
+
+	//Create Lock
+	rw->rwlock_lock=lock_create(rw->rwlock_name);
+   	if (rw->rwlock_lock->lock_wchan == NULL) {
+   		kfree(rw->rwlock_name);
+   		kfree(rw->rwlock_semaphore);
+	    kfree(rw);
+	    return NULL;
+	}
+
 	return rw;
 }
+
 void
 rwlock_destroy(struct rwlock *rw_lock)
 {
 	KASSERT(rw_lock != NULL);
 
 	        // add stuff here as needed
-	        kfree(rw_lock->rwlock_name);
-	        kfree(rw_lock);
+	    kfree(rw_lock->rwlock_name);
+		kfree(rw_lock->rwlock_semaphore);
+		kfree(rw_lock->rwlock_lock);
+	    kfree(rw_lock);
 }
 void
-rwlock_acquire_read(struct rwlock *)
+rwlock_acquire_read(struct rwlock *rw_lock)
 {
+	lock_acquire(rw_lock->rwlock_lock);
+	P(rw_lock->rwlock_semaphore);
 
+	lock_release(rw_lock->rwlock_lock);
 }
 
 void
-rwlock_release_read(struct rwlock *)
-{
+rwlock_release_read(struct rwlock *rw_lock){
 
+	V(rw_lock->rwlock_semaphore);
 }
 
 void
-rwlock_acquire_write(struct rwlock *)
-{
+rwlock_acquire_write(struct rwlock *rw_lock){
 
+	lock_acquire(rw_lock->rwlock_lock);
+	int i=1;
+	while(i!=MAX_READ)
+	{
+		P(rw_lock->rwlock_semaphore);
+		i++;
+	}
+
+	lock_release(rw_lock->rwlock_lock);
 }
 
 void
-rwlock_release_write(struct rwlock *){
+rwlock_release_write(struct rwlock *rw_lock){
 
-
+	int i=1;
+	while(i!=MAX_READ)
+	{
+		V(rw_lock->rwlock_semaphore);
+	}
 }
 
 

@@ -29,7 +29,7 @@
 
 #ifndef _SYNCH_H_
 #define _SYNCH_H_
-
+#define MAX_READ 31
 /*
  * Header file for synchronization primitives.
  */
@@ -148,6 +148,9 @@ void cv_broadcast(struct cv *cv, struct lock *lock);
 
 struct rwlock {
         char *rwlock_name;
+        struct semaphore *rwlock_semaphore;
+        struct lock *rwlock_lock;
+	
 };
 
 struct rwlock * rwlock_create(const char *);
