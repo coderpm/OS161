@@ -29,7 +29,7 @@
 
 #ifndef _SYNCH_H_
 #define _SYNCH_H_
-#define MAX_READ 5
+#define MAX_READ 40
 /*
  * Header file for synchronization primitives.
  */
