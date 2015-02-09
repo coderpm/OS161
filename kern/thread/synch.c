@@ -420,6 +420,7 @@ void
 rwlock_acquire_read(struct rwlock *rw_lock)
 {
 	lock_acquire(rw_lock->rwlock_lock);
+
 	P(rw_lock->rwlock_semaphore);
 
 	lock_release(rw_lock->rwlock_lock);
@@ -452,6 +453,7 @@ rwlock_release_write(struct rwlock *rw_lock){
 	while(i!=MAX_READ)
 	{
 		V(rw_lock->rwlock_semaphore);
+		i++;
 	}
 }
 
