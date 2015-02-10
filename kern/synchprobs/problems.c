@@ -47,8 +47,32 @@
 // functions will allow you to do local initialization. They are called at
 // the top of the corresponding driver code.
 
+static struct semaphore *sem_male;
+struct semaphore *sem_female;
+struct semaphore *sem_matchmaker;
+
+
+static volatile int male_count,female_count,matchmaker_count;
+bool match_possible;
+
+
+
 void whalemating_init() {
-  return;
+  /*
+   * Author: Student
+   * Declaring semaphores for male,female and matchmaker
+   *
+   */
+	sem_male= sem_create("male",0);
+	sem_female=sem_create("female",0);
+	sem_matchmaker=sem_create("matchmaker",0);
+
+	male_count=0;
+	female_count=0;
+	matchmaker_count=0;
+
+	match_possible=false;
+	return;
 }
 
 // 20 Feb 2012 : GWA : Adding at the suggestion of Nikhil Londhe. We don't
@@ -62,10 +86,36 @@ void
 male(void *p, unsigned long which)
 {
 	struct semaphore * whalematingMenuSemaphore = (struct semaphore *)p;
-  (void)which;
-  
-  male_start();
-	// Implement this function 
+	(void)which;
+
+
+	  male_start();
+
+	  male_count++;
+
+	  if(male_count>0)
+	  {
+		  P(sem_male);
+	  }
+
+	  if(female_count>0 && matchmaker_count >0){
+		  	  V(sem_male);
+			  V(sem_female);
+			  V(sem_matchmaker);
+			  male_count--;
+			  female_count--;
+			  matchmaker_count--;
+		  }
+
+
+
+	// Implement this function
+  /*
+   * Author: Student
+   * Implementing the semaphore for male
+   */
+
+
   male_end();
 
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
@@ -79,9 +129,30 @@ female(void *p, unsigned long which)
 {
 	struct semaphore * whalematingMenuSemaphore = (struct semaphore *)p;
   (void)which;
-  
+
   female_start();
-	// Implement this function 
+  female_count++;
+
+  if(female_count>0)
+  {
+	  match_possible=false;
+	  P(sem_female);
+  }
+
+  if(male_count>0 && matchmaker_count >0){
+		  V(sem_male);
+		  V(sem_female);
+		  V(sem_matchmaker);
+		  male_count--;
+		  female_count--;
+		  matchmaker_count--;
+	  }
+
+
+	// Implement this function
+
+
+
   female_end();
   
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
@@ -95,9 +166,31 @@ matchmaker(void *p, unsigned long which)
 {
 	struct semaphore * whalematingMenuSemaphore = (struct semaphore *)p;
   (void)which;
-  
   matchmaker_start();
-	// Implement this function 
+  	// Implement this function
+
+  matchmaker_count++;
+
+  if(matchmaker_count>0){
+	  P(sem_matchmaker);
+ }
+
+  if(male_count>0 && female_count>0 && matchmaker_count >0){
+
+		  V(sem_male);
+		  V(sem_female);
+		  V(sem_matchmaker);
+
+		  male_count--;
+		  female_count--;
+		  matchmaker_count--;
+
+	  }
+
+
+
+
+
   matchmaker_end();
   
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
@@ -105,6 +198,9 @@ matchmaker(void *p, unsigned long which)
   V(whalematingMenuSemaphore);
   return;
 }
+
+
+
 
 /*
  * You should implement your solution to the stoplight problem below. The
