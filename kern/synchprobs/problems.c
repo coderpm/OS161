@@ -46,14 +46,13 @@
 // 13 Feb 2012 : GWA : Adding at the suggestion of Isaac Elbaz. These
 // functions will allow you to do local initialization. They are called at
 // the top of the corresponding driver code.
-
-static struct semaphore *sem_male;
-struct semaphore *sem_female;
-struct semaphore *sem_matchmaker;
+struct cv *cv_male;
+struct cv *cv_female;
+struct cv *cv_matchmaker;
 
 
 static volatile int male_count,female_count,matchmaker_count;
-bool match_possible;
+struct lock *matching_lock;
 
 
 
@@ -63,15 +62,15 @@ void whalemating_init() {
    * Declaring semaphores for male,female and matchmaker
    *
    */
-	sem_male= sem_create("male",0);
-	sem_female=sem_create("female",0);
-	sem_matchmaker=sem_create("matchmaker",0);
+	cv_male= cv_create("male");
+	cv_female=cv_create("female");
+	cv_matchmaker=cv_create("matchmaker");
+	matching_lock= lock_create("matching_lock");
 
 	male_count=0;
 	female_count=0;
 	matchmaker_count=0;
 
-	match_possible=false;
 	return;
 }
 
@@ -79,6 +78,11 @@ void whalemating_init() {
 // care if your problems leak memory, but if you do, use this to clean up.
 
 void whalemating_cleanup() {
+
+	cv_destroy(cv_male);
+	cv_destroy(cv_female);
+	cv_destroy(cv_matchmaker);
+	lock_destroy(matching_lock);
   return;
 }
 
@@ -90,23 +94,35 @@ male(void *p, unsigned long which)
 
 
 	  male_start();
-
+	  lock_acquire(matching_lock);
 	  male_count++;
+	  if(female_count==0 || matchmaker_count ==0){
+		  cv_wait(cv_male, matching_lock);
+		  male_end();
+	  }
+	  else if(female_count>0 && matchmaker_count >0){
+		 while(!(male_count== 0 || female_count== 0 || matchmaker_count ==0)){
+		 		  if(cv_male->cv_wchan != NULL){
+		 			 cv_signal(cv_male, matching_lock);
+		 			 male_count--;
+		 			 cv_signal(cv_female, matching_lock);
+		 			 cv_signal(cv_matchmaker, matching_lock);
 
-	  if(male_count>0)
-	  {
-		  P(sem_male);
+		 		  }
+		 		  else{
+		 			 cv_signal(cv_female, matching_lock);
+		 			 cv_signal(cv_matchmaker, matching_lock);
+		 			 male_count--;
+		 		  }
+
+		 		  male_end();
+
+		 	  }
 	  }
 
-	  if(female_count>0 && matchmaker_count >0){
-		  	  V(sem_male);
-			  V(sem_female);
-			  V(sem_matchmaker);
-			  male_count--;
-			  female_count--;
-			  matchmaker_count--;
-		  }
 
+
+	  lock_release(matching_lock);
 
 
 	// Implement this function
@@ -116,7 +132,9 @@ male(void *p, unsigned long which)
    */
 
 
-  male_end();
+//male_end();
+
+
 
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
   // whalemating driver can return to the menu cleanly.
@@ -131,30 +149,40 @@ female(void *p, unsigned long which)
   (void)which;
 
   female_start();
-  female_count++;
 
-  if(female_count>0)
-  {
-	  match_possible=false;
-	  P(sem_female);
-  }
+  lock_acquire(matching_lock);
+  	  female_count++;
+  	  if(male_count ==0 || matchmaker_count== 0){
+  		  cv_wait(cv_female, matching_lock);
+  		female_end();
+  	  }
+  	  else if(male_count>0 && matchmaker_count >0){
+  		while(!(male_count== 0 || female_count== 0 || matchmaker_count ==0)){
+  		  		  if(cv_female->cv_wchan!= NULL){
+  		  			  cv_signal(cv_male, matching_lock);
+  		  			  male_count--;
+  		  			  cv_signal(cv_female, matching_lock);
+  		  			  female_count--;
+  		  			  cv_signal(cv_matchmaker, matching_lock);
+  		  			  matchmaker_count--;
 
-  if(male_count>0 && matchmaker_count >0){
-		  V(sem_male);
-		  V(sem_female);
-		  V(sem_matchmaker);
-		  male_count--;
-		  female_count--;
-		  matchmaker_count--;
-	  }
+  		  		  }
+  		  		  else{
+  		  			  cv_signal(cv_male, matching_lock);
+  		  			  male_count--;
+  		  			  cv_signal(cv_matchmaker, matching_lock);
+  		  			  matchmaker_count--;
+  		  			  female_count--;
+  		  		  }
+
+  		  		female_end();
+
+  		  	  }
+  	  }
 
 
-	// Implement this function
+  	  lock_release(matching_lock);
 
-
-
-  female_end();
-  
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
   // whalemating driver can return to the menu cleanly.
   V(whalematingMenuSemaphore);
@@ -166,33 +194,41 @@ matchmaker(void *p, unsigned long which)
 {
 	struct semaphore * whalematingMenuSemaphore = (struct semaphore *)p;
   (void)which;
+
   matchmaker_start();
-  	// Implement this function
+  lock_acquire(matching_lock);
+  	  matchmaker_count++;
+    	  if(male_count ==0 || female_count==0){
+    		  cv_wait(cv_matchmaker, matching_lock);
+    		  matchmaker_end();
+    	  }
+    	  else if(male_count>0 && female_count >0){
+    		  while(!(male_count== 0 || female_count== 0 || matchmaker_count ==0)){
+    		      if(cv_matchmaker->cv_wchan!= NULL){
+    		         cv_signal(cv_male, matching_lock);
+    		         male_count--;
+    		         cv_signal(cv_female, matching_lock);
+    		         female_count--;
+    		         cv_signal(cv_matchmaker, matching_lock);
+    		         matchmaker_count--;
 
-  matchmaker_count++;
+    		      }
+    		      else{
+    		        cv_signal(cv_male, matching_lock);
+    		        male_count--;
+    		        cv_signal(cv_female, matching_lock);
+    		        female_count--;
+    		      	matchmaker_count--;
+    		      }
 
-  if(matchmaker_count>0){
-	  P(sem_matchmaker);
- }
-
-  if(male_count>0 && female_count>0 && matchmaker_count >0){
-
-		  V(sem_male);
-		  V(sem_female);
-		  V(sem_matchmaker);
-
-		  male_count--;
-		  female_count--;
-		  matchmaker_count--;
-
-	  }
+        		  matchmaker_end();
+    		  }
+    	  }
 
 
+    	  lock_release(matching_lock);
+  //matchmaker_end();
 
-
-
-  matchmaker_end();
-  
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
   // whalemating driver can return to the menu cleanly.
   V(whalematingMenuSemaphore);
