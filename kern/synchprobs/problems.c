@@ -63,6 +63,8 @@ void whalemating_init() {
    * Declaring semaphores for male,female and matchmaker
    *
    */
+
+
 	sem_male= sem_create("male",0);
 	sem_female=sem_create("female",0);
 	sem_matchmaker=sem_create("matchmaker",0);
@@ -93,21 +95,24 @@ male(void *p, unsigned long which)
 
 	  male_count++;
 
-	  if(male_count>0)
-	  {
-		  P(sem_male);
-	  }
 
-	  if(female_count>0 && matchmaker_count >0){
-		  	  V(sem_male);
-			  V(sem_female);
-			  V(sem_matchmaker);
+	  if(male_count>0 && female_count>0 && matchmaker_count >0){
+		  V(sem_male);
+		  V(sem_female);
+		  V(sem_matchmaker);
+		  match_possible=true;
 			  male_count--;
 			  female_count--;
 			  matchmaker_count--;
+			  kprintf("\t\tMatch done M::%d F::%d Mat::%d",male_count,female_count,matchmaker_count);
+
+		}
+		  else if(male_count>0)
+		  {
+			  match_possible=false;
+			  P(sem_male);
+
 		  }
-
-
 
 	// Implement this function
   /*
@@ -131,22 +136,27 @@ female(void *p, unsigned long which)
   (void)which;
 
   female_start();
+
   female_count++;
 
-  if(female_count>0)
-  {
-	  match_possible=false;
-	  P(sem_female);
-  }
-
-  if(male_count>0 && matchmaker_count >0){
+	  if(male_count>0 && female_count>0 && matchmaker_count >0){
 		  V(sem_male);
 		  V(sem_female);
 		  V(sem_matchmaker);
+		  match_possible=true;
 		  male_count--;
 		  female_count--;
 		  matchmaker_count--;
+		  kprintf("\t\tMatch done M::%d F::%d Mat::%d",male_count,female_count,matchmaker_count);
+
 	  }
+	  else if(male_count>0)
+	  {
+	 	  match_possible=false;
+	 	  P(sem_female);
+
+	  }
+
 
 
 	// Implement this function
@@ -171,22 +181,23 @@ matchmaker(void *p, unsigned long which)
 
   matchmaker_count++;
 
-  if(matchmaker_count>0){
-	  P(sem_matchmaker);
- }
-
-  if(male_count>0 && female_count>0 && matchmaker_count >0){
-
+	  if(male_count>0 && female_count>0 && matchmaker_count >0){
 		  V(sem_male);
 		  V(sem_female);
 		  V(sem_matchmaker);
-
+		  match_possible=true;
 		  male_count--;
 		  female_count--;
 		  matchmaker_count--;
+		  kprintf("\t\tMatch done M::%d F::%d Mat::%d",male_count,female_count,matchmaker_count);
 
 	  }
+	  else if(male_count>0)
+	  {
+		  match_possible=false;
+		  P(sem_matchmaker);
 
+	  }
 
 
 
@@ -250,6 +261,7 @@ gostraight(void *p, unsigned long direction)
 	struct semaphore * stoplightMenuSemaphore = (struct semaphore *)p;
   (void)direction;
   
+
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
   // stoplight driver can return to the menu cleanly.
   V(stoplightMenuSemaphore);

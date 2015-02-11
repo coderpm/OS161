@@ -811,7 +811,7 @@ thread_exit(void)
 		struct addrspace *as = cur->t_addrspace;
 		cur->t_addrspace = NULL;
 		as_activate(NULL);
-		as_destroy(as);
+		as_dsestroy(as);
 	}
 
 	/* Check the stack guard band. */
