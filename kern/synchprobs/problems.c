@@ -62,19 +62,10 @@ void whalemating_init() {
    * Declaring semaphores for male,female and matchmaker
    *
    */
-<<<<<<< HEAD
-
-
-	sem_male= sem_create("male",0);
-	sem_female=sem_create("female",0);
-	sem_matchmaker=sem_create("matchmaker",0);
-=======
 	cv_male= cv_create("male");
 	cv_female=cv_create("female");
 	cv_matchmaker=cv_create("matchmaker");
 	matching_lock= lock_create("matching_lock");
->>>>>>> 3a5a23ba6bf76e144267da48e9d89cbab103cd02
-
 	male_count=0;
 	female_count=0;
 	matchmaker_count=0;
@@ -104,25 +95,7 @@ male(void *p, unsigned long which)
 	  male_start();
 	  lock_acquire(matching_lock);
 	  male_count++;
-<<<<<<< HEAD
 
-
-	  if(male_count>0 && female_count>0 && matchmaker_count >0){
-		  V(sem_male);
-		  V(sem_female);
-		  V(sem_matchmaker);
-		  match_possible=true;
-			  male_count--;
-			  female_count--;
-			  matchmaker_count--;
-			  kprintf("\t\tMatch done M::%d F::%d Mat::%d",male_count,female_count,matchmaker_count);
-
-		}
-		  else if(male_count>0)
-		  {
-			  match_possible=false;
-			  P(sem_male);
-=======
 	  if(female_count==0 || matchmaker_count ==0){
 		  cv_wait(cv_male, matching_lock);
 		  male_end();
@@ -150,9 +123,8 @@ male(void *p, unsigned long which)
 
 
 	  lock_release(matching_lock);
->>>>>>> 3a5a23ba6bf76e144267da48e9d89cbab103cd02
 
-		  }
+
 
 	// Implement this function
   /*
@@ -178,29 +150,6 @@ female(void *p, unsigned long which)
   (void)which;
 
   female_start();
-<<<<<<< HEAD
-
-  female_count++;
-
-	  if(male_count>0 && female_count>0 && matchmaker_count >0){
-		  V(sem_male);
-		  V(sem_female);
-		  V(sem_matchmaker);
-		  match_possible=true;
-		  male_count--;
-		  female_count--;
-		  matchmaker_count--;
-		  kprintf("\t\tMatch done M::%d F::%d Mat::%d",male_count,female_count,matchmaker_count);
-
-	  }
-	  else if(male_count>0)
-	  {
-	 	  match_possible=false;
-	 	  P(sem_female);
-
-	  }
-=======
->>>>>>> 3a5a23ba6bf76e144267da48e9d89cbab103cd02
 
   lock_acquire(matching_lock);
   	  female_count++;
@@ -235,16 +184,6 @@ female(void *p, unsigned long which)
 
   	  lock_release(matching_lock);
 
-<<<<<<< HEAD
-
-	// Implement this function
-
-
-
-  female_end();
-  
-=======
->>>>>>> 3a5a23ba6bf76e144267da48e9d89cbab103cd02
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
   // whalemating driver can return to the menu cleanly.
   V(whalematingMenuSemaphore);
@@ -256,33 +195,6 @@ matchmaker(void *p, unsigned long which)
 {
 	struct semaphore * whalematingMenuSemaphore = (struct semaphore *)p;
   (void)which;
-<<<<<<< HEAD
-  matchmaker_start();
-  	// Implement this function
-
-  matchmaker_count++;
-
-	  if(male_count>0 && female_count>0 && matchmaker_count >0){
-		  V(sem_male);
-		  V(sem_female);
-		  V(sem_matchmaker);
-		  match_possible=true;
-		  male_count--;
-		  female_count--;
-		  matchmaker_count--;
-		  kprintf("\t\tMatch done M::%d F::%d Mat::%d",male_count,female_count,matchmaker_count);
-
-	  }
-	  else if(male_count>0)
-	  {
-		  match_possible=false;
-		  P(sem_matchmaker);
-
-	  }
-
-
-=======
->>>>>>> 3a5a23ba6bf76e144267da48e9d89cbab103cd02
 
   matchmaker_start();
   lock_acquire(matching_lock);
@@ -358,7 +270,15 @@ matchmaker(void *p, unsigned long which)
 // functions will allow you to do local initialization. They are called at
 // the top of the corresponding driver code.
 
+struct cv * cross_intersection;
+struct lock * lock_intersection;
+bool status_busy;
+int quadrant[4];
+
 void stoplight_init() {
+	cross_intersection= cv_create("cross");
+	lock_intersection= lock_create("intersection_lock");
+	status_busy=false;
   return;
 }
 
@@ -366,6 +286,8 @@ void stoplight_init() {
 // care if your problems leak memory, but if you do, use this to clean up.
 
 void stoplight_cleanup() {
+	cv_destroy(cross_intersection);
+	lock_destroy(lock_intersection);
   return;
 }
 
@@ -374,7 +296,21 @@ gostraight(void *p, unsigned long direction)
 {
 	struct semaphore * stoplightMenuSemaphore = (struct semaphore *)p;
   (void)direction;
+  /*
+   * Author: Student
+   */
   
+  lock_acquire(lock_intersection);
+
+  while(status_busy)
+	  cv_wait(cross_intersection,lock_intersection);
+
+  inQuadrant(direction);
+  inQuadrant((direction+3)%4);
+  leaveIntersection();
+  status_busy=false;
+  cv_signal(cross_intersection,lock_intersection);
+  lock_release(lock_intersection);
 
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
   // stoplight driver can return to the menu cleanly.
@@ -387,6 +323,24 @@ turnleft(void *p, unsigned long direction)
 {
 	struct semaphore * stoplightMenuSemaphore = (struct semaphore *)p;
   (void)direction;
+
+  /*
+   *  Author: Student
+     */
+
+    lock_acquire(lock_intersection);
+
+    while(status_busy)
+  	  cv_wait(cross_intersection,lock_intersection);
+
+    inQuadrant(direction);
+    inQuadrant((direction+3)%4);
+    inQuadrant((direction+2)%4);
+    leaveIntersection();
+    status_busy=false;
+    cv_signal(cross_intersection,lock_intersection);
+    lock_release(lock_intersection);
+
   
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
   // stoplight driver can return to the menu cleanly.
@@ -402,6 +356,24 @@ turnright(void *p, unsigned long direction)
 
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
   // stoplight driver can return to the menu cleanly.
+
+  /*
+   *  Author: Student
+     */
+
+    lock_acquire(lock_intersection);
+
+    while(status_busy)
+  	  cv_wait(cross_intersection,lock_intersection);
+
+    inQuadrant(direction);
+
+    leaveIntersection();
+    status_busy=false;
+
+    cv_signal(cross_intersection,lock_intersection);
+    lock_release(lock_intersection);
+
   V(stoplightMenuSemaphore);
   return;
 }
