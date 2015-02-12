@@ -270,8 +270,12 @@ matchmaker(void *p, unsigned long which)
 // functions will allow you to do local initialization. They are called at
 // the top of the corresponding driver code.
 
-struct lock * lock_intersection;
+struct lock * lock_intersection0;
+struct lock * lock_intersection1;
+struct lock * lock_intersection2;
+struct lock * lock_intersection3;
 struct lock * lock_spacearray;
+
 struct cv * cross_intersection;
 
 bool status_busy;
@@ -279,8 +283,11 @@ int quadrant[4];	//To signify which parts of the quadrant one is occupying, 0 si
 
 void stoplight_init() {
 	cross_intersection= cv_create("cross");
-	lock_intersection= lock_create("intersection_lock");
-	lock_spacearray = lock_create("Space Array Lock");
+	lock_intersection0= lock_create("intersection_lock0");
+	lock_intersection1= lock_create("intersection_lock1");
+	lock_intersection2= lock_create("intersection_lock2");
+	lock_intersection3= lock_create("intersection_lock3");
+	lock_spacearray= lock_create("spacearray");
 
 	status_busy=false;
 	quadrant[4]=0;
@@ -292,8 +299,10 @@ void stoplight_init() {
 
 void stoplight_cleanup() {
 	cv_destroy(cross_intersection);
-	lock_destroy(lock_intersection);
-	lock_destroy(lock_spacearray);
+	lock_destroy(lock_intersection0);
+	lock_destroy(lock_intersection1);
+	lock_destroy(lock_intersection2);
+	lock_destroy(lock_intersection3);
 
 	return;
 }
@@ -308,23 +317,83 @@ gostraight(void *p, unsigned long direction)
    */
   
   lock_acquire(lock_spacearray);
-  while(!(quadrant[direction]==0 && (quadrant[(direction+3)%4]==0)))
+  if(!(quadrant[direction]==0 && (quadrant[(direction+3)%4]==0)))
 	  cv_wait(cross_intersection,lock_spacearray);
 
-  quadrant[direction]=1;
-  quadrant[(direction+3)%4]=1;
+  while(1){
+	  quadrant[direction]=1;
+	  quadrant[(direction+3)%4]=1;
 
-  lock_acquire(lock_intersection);
-  inQuadrant(direction);
-  inQuadrant((direction+3)%4);
-  leaveIntersection();
-  lock_release(lock_intersection);
+	  switch (direction) {
+		case 0:
+			lock_acquire(lock_intersection0);
+			lock_acquire(lock_intersection3);
+			inQuadrant(direction);
+			inQuadrant((direction+3)%4);
+			leaveIntersection();
+			quadrant[direction]=0;
+			quadrant[(direction+3)%4]=0;
 
+			lock_release(lock_intersection0);
+			lock_release(lock_intersection3);
 
-  quadrant[direction]=0;
-  quadrant[(direction+3)%4]=0;
-  cv_signal(cross_intersection,lock_spacearray);
-  lock_release(lock_spacearray);
+			cv_signal(cross_intersection,lock_spacearray);
+			lock_release(lock_spacearray);
+			break;
+		case 1:
+			lock_acquire(lock_intersection1);
+			lock_acquire(lock_intersection0);
+			inQuadrant(direction);
+			inQuadrant((direction+3)%4);
+			leaveIntersection();
+			quadrant[direction]=0;
+			quadrant[(direction+3)%4]=0;
+
+			lock_release(lock_intersection1);
+			lock_release(lock_intersection0);
+
+			cv_signal(cross_intersection,lock_spacearray);
+			lock_release(lock_spacearray);
+
+			break;
+		case 2:
+			lock_acquire(lock_intersection2);
+			lock_acquire(lock_intersection1);
+			inQuadrant(direction);
+			inQuadrant((direction+3)%4);
+			leaveIntersection();
+			quadrant[direction]=0;
+			quadrant[(direction+3)%4]=0;
+
+			lock_release(lock_intersection2);
+			lock_release(lock_intersection1);
+
+			cv_signal(cross_intersection,lock_spacearray);
+			lock_release(lock_spacearray);
+			break;
+		case 3:
+			lock_acquire(lock_intersection3);
+			lock_acquire(lock_intersection2);
+			inQuadrant(direction);
+			inQuadrant((direction+3)%4);
+			leaveIntersection();
+			quadrant[direction]=0;
+			quadrant[(direction+3)%4]=0;
+
+			lock_release(lock_intersection3);
+			lock_release(lock_intersection2);
+
+			cv_signal(cross_intersection,lock_spacearray);
+			lock_release(lock_spacearray);
+
+			break;
+
+		default:
+			break;
+	}//End of switch
+	  break;
+
+  }//End of While
 
 
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
@@ -342,28 +411,95 @@ turnleft(void *p, unsigned long direction)
   /*
    *  Author: Student
      */
-
   lock_acquire(lock_spacearray);
-  while(!(quadrant[direction]==0 && (quadrant[(direction+3)%4]==0)&& (quadrant[(direction+2)%4]==0)))
+  if(!(quadrant[direction]==0 && (quadrant[(direction+3)%4]==0)&& (quadrant[(direction+2)%4]==0)))
 	  cv_wait(cross_intersection,lock_spacearray);
 
-  quadrant[direction]=1;
-  quadrant[(direction+3)%4]=1;
-  quadrant[(direction+2)%4]=1;
+  while(1){
+	  quadrant[direction]=1;
+	  quadrant[(direction+3)%4]=1;
+	  quadrant[(direction+2)%4]=1;
 
+	  switch (direction) {
+		case 0:
+			lock_acquire(lock_intersection0);
+			lock_acquire(lock_intersection3);
+			lock_acquire(lock_intersection2);
+			inQuadrant(direction);
+			inQuadrant((direction+3)%4);
+			inQuadrant((direction+2)%4);
+			leaveIntersection();
+			quadrant[direction]=0;
+			quadrant[(direction+3)%4]=0;
+			quadrant[(direction+2)%4]=0;
+			lock_release(lock_intersection0);
+			lock_release(lock_intersection3);
+			lock_release(lock_intersection2);
 
-  lock_acquire(lock_intersection);
-  inQuadrant(direction);
-  inQuadrant((direction+3)%4);
-  inQuadrant((direction+2)%4);
-  leaveIntersection();
-  lock_release(lock_intersection);
+			cv_signal(cross_intersection,lock_spacearray);
+			lock_release(lock_spacearray);
+			break;
+		case 1:
+			lock_acquire(lock_intersection1);
+			lock_acquire(lock_intersection0);
+			lock_acquire(lock_intersection3);
+			inQuadrant(direction);
+			inQuadrant((direction+3)%4);
+			inQuadrant((direction+2)%4);
+			leaveIntersection();
+			quadrant[direction]=0;
+			quadrant[(direction+3)%4]=0;
+			quadrant[(direction+2)%4]=0;
+			lock_release(lock_intersection1);
+			lock_release(lock_intersection0);
+			lock_release(lock_intersection3);
 
-  quadrant[direction]=0;
-  quadrant[(direction+3)%4]=0;
-  quadrant[(direction+2)%4]=0;
-  cv_signal(cross_intersection,lock_spacearray);
-  lock_release(lock_spacearray);
+			cv_signal(cross_intersection,lock_spacearray);
+			lock_release(lock_spacearray);
+			break;
+		case 2:
+			lock_acquire(lock_intersection2);
+			lock_acquire(lock_intersection1);
+			lock_acquire(lock_intersection0);
+			inQuadrant(direction);
+			inQuadrant((direction+3)%4);
+			inQuadrant((direction+2)%4);
+			leaveIntersection();
+			quadrant[direction]=0;
+			quadrant[(direction+3)%4]=0;
+			quadrant[(direction+2)%4]=0;
+			lock_release(lock_intersection2);
+			lock_release(lock_intersection1);
+			lock_release(lock_intersection0);
+
+			cv_signal(cross_intersection,lock_spacearray);
+			lock_release(lock_spacearray);
+			break;
+		case 3:
+			lock_acquire(lock_intersection3);
+			lock_acquire(lock_intersection2);
+			lock_acquire(lock_intersection1);
+			inQuadrant(direction);
+			inQuadrant((direction+3)%4);
+			inQuadrant((direction+2)%4);
+			leaveIntersection();
+			quadrant[direction]=0;
+			quadrant[(direction+3)%4]=0;
+			quadrant[(direction+2)%4]=0;
+			lock_release(lock_intersection3);
+			lock_release(lock_intersection2);
+			lock_release(lock_intersection1);
+
+			cv_signal(cross_intersection,lock_spacearray);
+			lock_release(lock_spacearray);
+			break;
+
+		default:
+			break;
+	}//End of switch
+	  break;
+
+  }//End of While
 
 
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
@@ -385,23 +521,63 @@ turnright(void *p, unsigned long direction)
    *  Author: Student
      */
   lock_acquire(lock_spacearray);
-
-  while(!(quadrant[direction]==0 ))
+  if(!(quadrant[direction]==0 && (quadrant[(direction+3)%4]==0)&& (quadrant[(direction+2)%4]==0)))
 	  cv_wait(cross_intersection,lock_spacearray);
 
-  quadrant[direction]=1;
+  while(1){
+	  quadrant[direction]=1;
 
-  cv_signal(cross_intersection,lock_spacearray);
+	  switch (direction) {
+		case 0:
+			lock_acquire(lock_intersection0);
+			inQuadrant(direction);
+			leaveIntersection();
+			quadrant[direction]=0;
+			lock_release(lock_intersection0);
 
-  lock_acquire(lock_intersection);
-  inQuadrant(direction);
-  leaveIntersection();
+			cv_signal(cross_intersection,lock_spacearray);
+			lock_release(lock_spacearray);
+			break;
+		case 1:
+			lock_acquire(lock_intersection1);
+			inQuadrant(direction);
+			leaveIntersection();
+			quadrant[direction]=0;
+			lock_release(lock_intersection1);
 
-  lock_release(lock_intersection);
+			cv_signal(cross_intersection,lock_spacearray);
+			lock_release(lock_spacearray);
+			break;
+		case 2:
+			lock_acquire(lock_intersection2);
+			inQuadrant(direction);
+			leaveIntersection();
+			quadrant[direction]=0;
+			lock_release(lock_intersection2);
 
-  quadrant[direction]=0;
-  cv_signal(cross_intersection,lock_spacearray);
-  lock_release(lock_spacearray);
+			cv_signal(cross_intersection,lock_spacearray);
+			lock_release(lock_spacearray);
+			break;
+		case 3:
+			lock_acquire(lock_intersection3);
+			inQuadrant(direction);
+			leaveIntersection();
+			quadrant[direction]=0;
+			lock_release(lock_intersection3);
+
+			cv_signal(cross_intersection,lock_spacearray);
+			lock_release(lock_spacearray);
+			break;
+
+		default:
+			break;
+	}//End of switch
+	  break;
+
+  }//End of While
+
+
+
 
   V(stoplightMenuSemaphore);
   return;
