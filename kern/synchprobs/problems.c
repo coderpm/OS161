@@ -270,15 +270,20 @@ matchmaker(void *p, unsigned long which)
 // functions will allow you to do local initialization. They are called at
 // the top of the corresponding driver code.
 
-struct cv * cross_intersection;
 struct lock * lock_intersection;
+struct lock * lock_spacearray;
+struct cv * cross_intersection;
+
 bool status_busy;
-int quadrant[4];
+int quadrant[4];	//To signify which parts of the quadrant one is occupying, 0 signifies free and 1 signifies taken
 
 void stoplight_init() {
 	cross_intersection= cv_create("cross");
 	lock_intersection= lock_create("intersection_lock");
+	lock_spacearray = lock_create("Space Array Lock");
+
 	status_busy=false;
+	quadrant[4]=0;
   return;
 }
 
@@ -288,7 +293,9 @@ void stoplight_init() {
 void stoplight_cleanup() {
 	cv_destroy(cross_intersection);
 	lock_destroy(lock_intersection);
-  return;
+	lock_destroy(lock_spacearray);
+
+	return;
 }
 
 void
@@ -300,17 +307,25 @@ gostraight(void *p, unsigned long direction)
    * Author: Student
    */
   
+  lock_acquire(lock_spacearray);
+  while(!(quadrant[direction]==0 && (quadrant[(direction+3)%4]==0)))
+	  cv_wait(cross_intersection,lock_spacearray);
+
+  quadrant[direction]=1;
+  quadrant[(direction+3)%4]=1;
+
   lock_acquire(lock_intersection);
-
-  while(status_busy)
-	  cv_wait(cross_intersection,lock_intersection);
-
   inQuadrant(direction);
   inQuadrant((direction+3)%4);
   leaveIntersection();
-  status_busy=false;
-  cv_signal(cross_intersection,lock_intersection);
   lock_release(lock_intersection);
+
+
+  quadrant[direction]=0;
+  quadrant[(direction+3)%4]=0;
+  cv_signal(cross_intersection,lock_spacearray);
+  lock_release(lock_spacearray);
+
 
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
   // stoplight driver can return to the menu cleanly.
@@ -328,20 +343,29 @@ turnleft(void *p, unsigned long direction)
    *  Author: Student
      */
 
-    lock_acquire(lock_intersection);
+  lock_acquire(lock_spacearray);
+  while(!(quadrant[direction]==0 && (quadrant[(direction+3)%4]==0)&& (quadrant[(direction+2)%4]==0)))
+	  cv_wait(cross_intersection,lock_spacearray);
 
-    while(status_busy)
-  	  cv_wait(cross_intersection,lock_intersection);
+  quadrant[direction]=1;
+  quadrant[(direction+3)%4]=1;
+  quadrant[(direction+2)%4]=1;
 
-    inQuadrant(direction);
-    inQuadrant((direction+3)%4);
-    inQuadrant((direction+2)%4);
-    leaveIntersection();
-    status_busy=false;
-    cv_signal(cross_intersection,lock_intersection);
-    lock_release(lock_intersection);
 
-  
+  lock_acquire(lock_intersection);
+  inQuadrant(direction);
+  inQuadrant((direction+3)%4);
+  inQuadrant((direction+2)%4);
+  leaveIntersection();
+  lock_release(lock_intersection);
+
+  quadrant[direction]=0;
+  quadrant[(direction+3)%4]=0;
+  quadrant[(direction+2)%4]=0;
+  cv_signal(cross_intersection,lock_spacearray);
+  lock_release(lock_spacearray);
+
+
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
   // stoplight driver can return to the menu cleanly.
   V(stoplightMenuSemaphore);
@@ -360,19 +384,24 @@ turnright(void *p, unsigned long direction)
   /*
    *  Author: Student
      */
+  lock_acquire(lock_spacearray);
 
-    lock_acquire(lock_intersection);
+  while(!(quadrant[direction]==0 ))
+	  cv_wait(cross_intersection,lock_spacearray);
 
-    while(status_busy)
-  	  cv_wait(cross_intersection,lock_intersection);
+  quadrant[direction]=1;
 
-    inQuadrant(direction);
+  cv_signal(cross_intersection,lock_spacearray);
 
-    leaveIntersection();
-    status_busy=false;
+  lock_acquire(lock_intersection);
+  inQuadrant(direction);
+  leaveIntersection();
 
-    cv_signal(cross_intersection,lock_intersection);
-    lock_release(lock_intersection);
+  lock_release(lock_intersection);
+
+  quadrant[direction]=0;
+  cv_signal(cross_intersection,lock_spacearray);
+  lock_release(lock_spacearray);
 
   V(stoplightMenuSemaphore);
   return;
