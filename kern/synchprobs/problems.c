@@ -316,11 +316,11 @@ gostraight(void *p, unsigned long direction)
    * Author: Student
    */
   
-  lock_acquire(lock_spacearray);
-  if(!(quadrant[direction]==0 && (quadrant[(direction+3)%4]==0)))
-	  cv_wait(cross_intersection,lock_spacearray);
+ // lock_acquire(lock_spacearray);
 
-  while(1){
+	  if((quadrant[direction]==0 && (quadrant[(direction+3)%4]==0))){
+	//  	  cv_wait(cross_intersection,lock_spacearray);
+
 	  quadrant[direction]=1;
 	  quadrant[(direction+3)%4]=1;
 
@@ -337,7 +337,7 @@ gostraight(void *p, unsigned long direction)
 			lock_release(lock_intersection0);
 			lock_release(lock_intersection3);
 
-			cv_signal(cross_intersection,lock_spacearray);
+		//	cv_signal(cross_intersection,lock_spacearray);
 			lock_release(lock_spacearray);
 			break;
 		case 1:
@@ -352,7 +352,7 @@ gostraight(void *p, unsigned long direction)
 			lock_release(lock_intersection1);
 			lock_release(lock_intersection0);
 
-			cv_signal(cross_intersection,lock_spacearray);
+	//		cv_signal(cross_intersection,lock_spacearray);
 			lock_release(lock_spacearray);
 
 			break;
@@ -368,7 +368,7 @@ gostraight(void *p, unsigned long direction)
 			lock_release(lock_intersection2);
 			lock_release(lock_intersection1);
 
-			cv_signal(cross_intersection,lock_spacearray);
+	//		cv_signal(cross_intersection,lock_spacearray);
 			lock_release(lock_spacearray);
 			break;
 		case 3:
@@ -383,7 +383,7 @@ gostraight(void *p, unsigned long direction)
 			lock_release(lock_intersection3);
 			lock_release(lock_intersection2);
 
-			cv_signal(cross_intersection,lock_spacearray);
+//			cv_signal(cross_intersection,lock_spacearray);
 			lock_release(lock_spacearray);
 
 			break;
@@ -391,9 +391,7 @@ gostraight(void *p, unsigned long direction)
 		default:
 			break;
 	}//End of switch
-	  break;
-
-  }//End of While
+  }//End of IF
 
 
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
@@ -411,11 +409,10 @@ turnleft(void *p, unsigned long direction)
   /*
    *  Author: Student
      */
-  lock_acquire(lock_spacearray);
-  if(!(quadrant[direction]==0 && (quadrant[(direction+3)%4]==0)&& (quadrant[(direction+2)%4]==0)))
-	  cv_wait(cross_intersection,lock_spacearray);
+//  lock_acquire(lock_spacearray);
 
-  while(1){
+	  if((quadrant[direction]==0 && (quadrant[(direction+3)%4]==0)&& (quadrant[(direction+2)%4]==0)))
+	  {
 	  quadrant[direction]=1;
 	  quadrant[(direction+3)%4]=1;
 	  quadrant[(direction+2)%4]=1;
@@ -436,7 +433,7 @@ turnleft(void *p, unsigned long direction)
 			lock_release(lock_intersection3);
 			lock_release(lock_intersection2);
 
-			cv_signal(cross_intersection,lock_spacearray);
+//			cv_signal(cross_intersection,lock_spacearray);
 			lock_release(lock_spacearray);
 			break;
 		case 1:
@@ -454,7 +451,7 @@ turnleft(void *p, unsigned long direction)
 			lock_release(lock_intersection0);
 			lock_release(lock_intersection3);
 
-			cv_signal(cross_intersection,lock_spacearray);
+	//		cv_signal(cross_intersection,lock_spacearray);
 			lock_release(lock_spacearray);
 			break;
 		case 2:
@@ -472,7 +469,7 @@ turnleft(void *p, unsigned long direction)
 			lock_release(lock_intersection1);
 			lock_release(lock_intersection0);
 
-			cv_signal(cross_intersection,lock_spacearray);
+//			cv_signal(cross_intersection,lock_spacearray);
 			lock_release(lock_spacearray);
 			break;
 		case 3:
@@ -490,16 +487,14 @@ turnleft(void *p, unsigned long direction)
 			lock_release(lock_intersection2);
 			lock_release(lock_intersection1);
 
-			cv_signal(cross_intersection,lock_spacearray);
+//			cv_signal(cross_intersection,lock_spacearray);
 			lock_release(lock_spacearray);
 			break;
 
 		default:
 			break;
 	}//End of switch
-	  break;
-
-  }//End of While
+	  }//End of IF
 
 
   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
@@ -520,11 +515,10 @@ turnright(void *p, unsigned long direction)
   /*
    *  Author: Student
      */
-  lock_acquire(lock_spacearray);
-  if(!(quadrant[direction]==0 ))
-	  cv_wait(cross_intersection,lock_spacearray);
+ // lock_acquire(lock_spacearray);
 
-  while(1){
+    if((quadrant[direction]==0 )){
+//		  cv_wait(cross_intersection,lock_spacearray);
 
 	  quadrant[direction]=1;
 
@@ -536,7 +530,7 @@ turnright(void *p, unsigned long direction)
 			quadrant[direction]=0;
 			lock_release(lock_intersection0);
 
-			cv_signal(cross_intersection,lock_spacearray);
+	//		cv_signal(cross_intersection,lock_spacearray);
 			lock_release(lock_spacearray);
 			break;
 		case 1:
@@ -546,7 +540,7 @@ turnright(void *p, unsigned long direction)
 			quadrant[direction]=0;
 			lock_release(lock_intersection1);
 
-			cv_signal(cross_intersection,lock_spacearray);
+	//		cv_signal(cross_intersection,lock_spacearray);
 			lock_release(lock_spacearray);
 			break;
 		case 2:
@@ -556,7 +550,7 @@ turnright(void *p, unsigned long direction)
 			quadrant[direction]=0;
 			lock_release(lock_intersection2);
 
-			cv_signal(cross_intersection,lock_spacearray);
+//			cv_signal(cross_intersection,lock_spacearray);
 			lock_release(lock_spacearray);
 			break;
 		case 3:
@@ -566,18 +560,14 @@ turnright(void *p, unsigned long direction)
 			quadrant[direction]=0;
 			lock_release(lock_intersection3);
 
-			cv_signal(cross_intersection,lock_spacearray);
+//			cv_signal(cross_intersection,lock_spacearray);
 			lock_release(lock_spacearray);
 			break;
 
 		default:
 			break;
 	}//End of switch
-	  break;
-
-  }//End of While
-
-
+	  }//End of IF
 
 
   V(stoplightMenuSemaphore);
