@@ -521,10 +521,11 @@ turnright(void *p, unsigned long direction)
    *  Author: Student
      */
   lock_acquire(lock_spacearray);
-  if(!(quadrant[direction]==0 && (quadrant[(direction+3)%4]==0)&& (quadrant[(direction+2)%4]==0)))
+  if(!(quadrant[direction]==0 ))
 	  cv_wait(cross_intersection,lock_spacearray);
 
   while(1){
+
 	  quadrant[direction]=1;
 
 	  switch (direction) {
