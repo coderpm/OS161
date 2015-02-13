@@ -30,7 +30,7 @@
 /*
  * Main.
  */
-// "Adding for git" marora3@buffalo.edu
+
 
 #include <types.h>
 #include <kern/errno.h>
@@ -55,7 +55,7 @@
 /*
  * These two pieces of data are maintained by the makefiles and build system.
  * buildconfig is the name of the config file the kernel was configured with.
- * buildversion starts at 1 and is incremented every time you link a kernel. 
+ * buildversion starts at 1 and is incremented every time you link a kernel.
  *
  * The purpose is not to show off how many kernels you've linked, but
  * to make it easy to make sure that the kernel you just booted is the
