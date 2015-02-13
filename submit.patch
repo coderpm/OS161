@@ -1,0 +1,697 @@
+diff --git a/kern/arch/mips/conf/ldscript b/kern/arch/mips/conf/ldscript
+index cbe86ac..ba44f70 100644
+--- a/kern/arch/mips/conf/ldscript
++++ b/kern/arch/mips/conf/ldscript
+@@ -1,3 +1,4 @@
++
+ /*
+  * This is a pile of crap that tells the linker how to link the kernel,
+  * because it's too stupid to be able to work it out on its own.
+diff --git a/kern/include/synch.h b/kern/include/synch.h
+index ac3714b..3da7cb9 100644
+--- a/kern/include/synch.h
++++ b/kern/include/synch.h
+@@ -29,7 +29,7 @@
+ 
+ #ifndef _SYNCH_H_
+ #define _SYNCH_H_
+-
++#define MAX_READ 40
+ /*
+  * Header file for synchronization primitives.
+  */
+@@ -74,6 +74,10 @@ void V(struct semaphore *);
+  */
+ struct lock {
+         char *lk_name;
++        struct wchan *lock_wchan;
++        volatile int lock_hold;
++        struct spinlock lk_spinlock;
++        struct thread *lk_thread;
+         // add what you need here
+         // (don't forget to mark things volatile as needed)
+ };
+@@ -113,6 +117,7 @@ void lock_destroy(struct lock *);
+ 
+ struct cv {
+         char *cv_name;
++        struct wchan *cv_wchan;
+         // add what you need here
+         // (don't forget to mark things volatile as needed)
+ };
+@@ -143,6 +148,9 @@ void cv_broadcast(struct cv *cv, struct lock *lock);
+ 
+ struct rwlock {
+         char *rwlock_name;
++        struct semaphore *rwlock_semaphore;
++        struct lock *rwlock_lock;
++	
+ };
+ 
+ struct rwlock * rwlock_create(const char *);
+diff --git a/kern/startup/main.c b/kern/startup/main.c
+index be4c4b8..714332a 100644
+--- a/kern/startup/main.c
++++ b/kern/startup/main.c
+@@ -100,7 +100,7 @@ boot(void)
+ 	kprintf("%s", harvard_copyright);
+ 	kprintf("\n");
+ 
+-	kprintf("Put-your-group-name-here's system version %s (%s #%d)\n", 
++	kprintf("prathamm@buffalo.edu's system version %s (%s #%d)\n",
+ 		GROUP_VERSION, buildconfig, buildversion);
+ 	kprintf("\n");
+ 
+diff --git a/kern/synchprobs/problems.c b/kern/synchprobs/problems.c
+index 81d2f0e..5d608ee 100644
+--- a/kern/synchprobs/problems.c
++++ b/kern/synchprobs/problems.c
+@@ -46,15 +46,45 @@
+ // 13 Feb 2012 : GWA : Adding at the suggestion of Isaac Elbaz. These
+ // functions will allow you to do local initialization. They are called at
+ // the top of the corresponding driver code.
++struct cv *cv_male;
++struct cv *cv_female;
++struct cv *cv_matchmaker;
++
++
++static volatile int male_count,female_count,matchmaker_count;
++struct lock *matching_lock;
++bool match_possible;
++
++
+ 
+ void whalemating_init() {
+-  return;
++  /*
++   * Author: Student
++   * Declaring semaphores for male,female and matchmaker
++   *
++   */
++	cv_male= cv_create("male");
++	cv_female=cv_create("female");
++	cv_matchmaker=cv_create("matchmaker");
++	matching_lock= lock_create("matching_lock");
++
++	male_count=0;
++	female_count=0;
++	matchmaker_count=0;
++
++	match_possible=false;
++	return;
+ }
+ 
+ // 20 Feb 2012 : GWA : Adding at the suggestion of Nikhil Londhe. We don't
+ // care if your problems leak memory, but if you do, use this to clean up.
+ 
+ void whalemating_cleanup() {
++
++	cv_destroy(cv_male);
++	cv_destroy(cv_female);
++	cv_destroy(cv_matchmaker);
++	lock_destroy(matching_lock);
+   return;
+ }
+ 
+@@ -62,11 +92,86 @@ void
+ male(void *p, unsigned long which)
+ {
+ 	struct semaphore * whalematingMenuSemaphore = (struct semaphore *)p;
+-  (void)which;
+-  
+-  male_start();
+-	// Implement this function 
+-  male_end();
++	(void)which;
++
++
++	  male_start();
++	  //lock_acquire(matching_lock);
++	  /*if(female_count>0 && matchmaker_count >0){
++		  while(!(male_count== 0 || female_count== 0 || matchmaker_count ==0)){
++			  if(sem_male->sem_wchan!= NULL){
++				  V(sem_male);
++				  V(sem_female);
++				  V(sem_matchmaker);
++				  male_count--;
++				  female_count--;
++				  matchmaker_count--;
++			  }
++			  else{
++				  V(sem_female);
++				  V(sem_matchmaker);
++				  male_count--;
++				  female_count--;
++				  matchmaker_count--;
++			  }
++		 }
++	      //lock_release(matching_lock);
++	  }
++	  else{
++	      male_count++;
++		  P(sem_male);
++		//  lock_release(matching_lock);
++	  }
++*/
++	  lock_acquire(matching_lock);
++	  male_count++;
++	  if(female_count==0 || matchmaker_count ==0){
++		  cv_wait(cv_male, matching_lock);
++		  male_end();
++	  }
++	  else if(female_count>0 && matchmaker_count >0){
++		  //cv_signal(cv_male, matching_lock);
++		  //male_count--;
++		  //male_end();
++		 while(!(male_count== 0 || female_count== 0 || matchmaker_count ==0)){
++		 		  if(cv_male->cv_wchan != NULL){
++		 			 cv_signal(cv_male, matching_lock);
++		 			 male_count--;
++		 		//	 kprintf("WAKING ONE MALE \n");
++		 			 cv_signal(cv_female, matching_lock);
++		 	//		 kprintf("WAKING ONE FEMALE \n");
++		 			 cv_signal(cv_matchmaker, matching_lock);
++		 //			 kprintf("WAKING ONE AM \n");
++
++		 		  }
++		 		  else{
++		 			 cv_signal(cv_female, matching_lock);
++		 		//	 kprintf("WAKING ONE FEMALE \n");
++		 			 cv_signal(cv_matchmaker, matching_lock);
++		 	//		 kprintf("WAKING ONE AM \n");
++		 			 male_count--;
++		 		  }
++
++		 		  male_end();
++
++		 	  }
++	  }
++
++
++
++	  lock_release(matching_lock);
++
++
++	// Implement this function
++  /*
++   * Author: Student
++   * Implementing the semaphore for male
++   */
++
++
++//male_end();
++
++
+ 
+   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
+   // whalemating driver can return to the menu cleanly.
+@@ -79,11 +184,83 @@ female(void *p, unsigned long which)
+ {
+ 	struct semaphore * whalematingMenuSemaphore = (struct semaphore *)p;
+   (void)which;
+-  
++
+   female_start();
+-	// Implement this function 
+-  female_end();
+-  
++
++      //lock_acquire(matching_lock);
++  	 /* if(male_count>0 && matchmaker_count >0){
++  		while(!(male_count== 0 || female_count== 0 || matchmaker_count ==0)){
++  			if(sem_female->sem_wchan!= NULL){
++  				 V(sem_male);
++  				 V(sem_female);
++  				 V(sem_matchmaker);
++  				 male_count--;
++  				 female_count--;
++  				 matchmaker_count--;
++  		    }
++  			else{
++  			  V(sem_male);
++  			  V(sem_matchmaker);
++  			  male_count--;
++  			  female_count--;
++  			  matchmaker_count--;
++  		   }
++  		}
++	      //lock_release(matching_lock);
++  	  }
++  	else{
++  	  female_count++;
++  	  P(sem_female);
++  			 // lock_release(matching_lock);
++   }*/
++
++  	  //lock_release(matching_lock);
++
++
++	// Implement this function
++
++
++  lock_acquire(matching_lock);
++  	  female_count++;
++  	  if(male_count ==0 || matchmaker_count== 0){
++  		  cv_wait(cv_female, matching_lock);
++  		female_end();
++  	  }
++  	  else if(male_count>0 && matchmaker_count >0){
++  		// cv_signal(cv_female, matching_lock);
++  		//female_count--;
++  		// female_end();
++  		while(!(male_count== 0 || female_count== 0 || matchmaker_count ==0)){
++  		  		  if(cv_female->cv_wchan!= NULL){
++  		  			  cv_signal(cv_male, matching_lock);
++  		  			  male_count--;
++  		  			//  kprintf("WAKING ONE MALE \n");
++  		  			  cv_signal(cv_female, matching_lock);
++  		  			  female_count--;
++  		  			//  kprintf("WAKING ONE FEMALE \n");
++  		  			  cv_signal(cv_matchmaker, matching_lock);
++  		  			  matchmaker_count--;
++  		  			 // kprintf("WAKING ONE MF \n");
++
++  		  		  }
++  		  		  else{
++  		  			  cv_signal(cv_male, matching_lock);
++  		  			  male_count--;
++  		  			  cv_signal(cv_matchmaker, matching_lock);
++  		  			  matchmaker_count--;
++  		  			  female_count--;
++  		  		  }
++
++  		  		female_end();
++
++  		  	  }
++  	  }
++
++
++  	  lock_release(matching_lock);
++
++  //female_end();
++
+   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
+   // whalemating driver can return to the menu cleanly.
+   V(whalematingMenuSemaphore);
+@@ -95,17 +272,90 @@ matchmaker(void *p, unsigned long which)
+ {
+ 	struct semaphore * whalematingMenuSemaphore = (struct semaphore *)p;
+   (void)which;
+-  
++
+   matchmaker_start();
+-	// Implement this function 
+-  matchmaker_end();
+-  
++
++         //lock_acquire(matching_lock);
++ /*   	  if(male_count>0 && female_count >0){
++    		  while(!(male_count== 0 || female_count== 0 || matchmaker_count ==0)){
++    			  if(sem_matchmaker->sem_wchan!= NULL){
++    			      V(sem_male);
++    			      V(sem_female);
++    			      V(sem_matchmaker);
++    			      male_count--;
++    			      female_count--;
++    			      matchmaker_count--;
++    			   }
++    			   else{
++    			  	  V(sem_male);
++    			  	  V(sem_female);
++    			  	  male_count--;
++    			      female_count--;
++    			      matchmaker_count--;
++    			   }
++    		  }
++    	   //   lock_release(matching_lock);
++    	  }
++    	  else{
++              matchmaker_count++;
++    		  P(sem_matchmaker);
++    		 // lock_release(matching_lock);
++    	  }*/
++    	 // lock_release(matching_lock);
++
++
++  lock_acquire(matching_lock);
++  	  matchmaker_count++;
++    	  if(male_count ==0 || female_count==0){
++    		  cv_wait(cv_matchmaker, matching_lock);
++    		  matchmaker_end();
++    	  }
++    	  else if(male_count>0 && female_count >0){
++    		 // cv_signal(cv_matchmaker, matching_lock);
++    		 // matchmaker_count--;
++    		 // matchmaker_end();
++    		  while(!(male_count== 0 || female_count== 0 || matchmaker_count ==0)){
++    		      if(cv_matchmaker->cv_wchan!= NULL){
++    		         cv_signal(cv_male, matching_lock);
++    		         //kprintf("WAKING ONE MALE \n");
++    		         male_count--;
++    		         cv_signal(cv_female, matching_lock);
++
++    		        // kprintf("WAKING ONE FEMALE \n");
++    		         female_count--;
++    		         cv_signal(cv_matchmaker, matching_lock);
++
++    		         //kprintf("WAKING ONE MM \n");
++    		         matchmaker_count--;
++
++    		      }
++    		      else{
++    		        cv_signal(cv_male, matching_lock);
++    		        male_count--;
++    		        cv_signal(cv_female, matching_lock);
++    		        female_count--;
++    		      	matchmaker_count--;
++    		      }
++
++        		  matchmaker_end();
++
++
++    		   }
++    	  }
++
++
++    	  lock_release(matching_lock);
++  //matchmaker_end();
++
+   // 08 Feb 2012 : GWA : Please do not change this code. This is so that your
+   // whalemating driver can return to the menu cleanly.
+   V(whalematingMenuSemaphore);
+   return;
+ }
+ 
++
++
++
+ /*
+  * You should implement your solution to the stoplight problem below. The
+  * quadrant and direction mappings for reference: (although the problem is,
+diff --git a/kern/thread/synch.c b/kern/thread/synch.c
+index 9a7468c..cb76b9a 100644
+--- a/kern/thread/synch.c
++++ b/kern/thread/synch.c
+@@ -40,6 +40,7 @@
+ #include <current.h>
+ #include <synch.h>
+ 
++
+ ////////////////////////////////////////////////////////////
+ //
+ // Semaphore.
+@@ -87,8 +88,7 @@ sem_destroy(struct semaphore *sem)
+         kfree(sem);
+ }
+ 
+-void 
+-P(struct semaphore *sem)
++void P(struct semaphore *sem)
+ {
+         KASSERT(sem != NULL);
+ 
+@@ -164,7 +164,15 @@ lock_create(const char *name)
+         }
+         
+         // add stuff here as needed
+-        
++        lock->lock_wchan = wchan_create(lock->lk_name);
++        	if (lock->lock_wchan == NULL) {
++        		kfree(lock->lk_name);
++        		kfree(lock);
++        		return NULL;
++        	}
++        spinlock_init(&lock->lk_spinlock);
++        lock->lock_hold=0;
++        lock->lk_thread= NULL;
+         return lock;
+ }
+ 
+@@ -174,7 +182,8 @@ lock_destroy(struct lock *lock)
+         KASSERT(lock != NULL);
+ 
+         // add stuff here as needed
+-        
++        wchan_destroy(lock->lock_wchan);
++        spinlock_cleanup(&lock->lk_spinlock);
+         kfree(lock->lk_name);
+         kfree(lock);
+ }
+@@ -183,26 +192,77 @@ void
+ lock_acquire(struct lock *lock)
+ {
+         // Write this
++	struct thread *mythread;
++	KASSERT(lock != NULL);
++    KASSERT(curthread->t_in_interrupt == false);
++
++	spinlock_acquire(&lock->lk_spinlock);
++
++	while(lock->lock_hold==1){
++		wchan_lock(lock->lock_wchan);
++		spinlock_release(&lock->lk_spinlock);
++		wchan_sleep(lock->lock_wchan);
++		spinlock_acquire(&lock->lk_spinlock);
++	}
++/*	else if(lock->lock_hold==0){
++		if (CURCPU_EXISTS()) {
++				mythread = curthread;
++				if (lock->lk_thread == mythread) {
++					panic("Deadlock on thread %p\n", lock);
++				}
++			}
++			else {
++				mythread = NULL;
++			} */
++
++	if(curthread!= NULL){
++				 mythread = curthread;
++				 lock->lk_thread = mythread;
++	}
++	lock->lock_hold= 1;
++
++	spinlock_release(&lock->lk_spinlock);
++
++	  //KASSERT(lock->lock_count > 0);
+ 
+-        (void)lock;  // suppress warning until code gets written
++       //(void)lock;  // suppress warning until code gets written
+ }
+ 
+ void
+ lock_release(struct lock *lock)
+ {
+         // Write this
++    KASSERT(lock != NULL);
++    spinlock_acquire(&lock->lk_spinlock);
+ 
+-        (void)lock;  // suppress warning until code gets written
++    lock->lock_hold=0;
++    KASSERT(lock->lock_hold== 0);
++    lock->lk_thread= NULL;
++    wchan_wakeone(lock->lock_wchan);
++
++    spinlock_release(&lock->lk_spinlock);
++       // (void)lock;  // suppress warning until code gets written
+ }
+ 
+ bool
+ lock_do_i_hold(struct lock *lock)
+ {
+         // Write this
+-
+-        (void)lock;  // suppress warning until code gets written
+-
+-        return true; // dummy until code gets written
++	if (!CURCPU_EXISTS()) {
++			return true;
++		}
++//	if(lock->lk_holder== curcpu->c_self){
++//		return true;
++//	}
++	//KASSERT(lock->lk_thread != NULL);
++	//KASSERT(lock != NULL);
++	bool value= false;
++
++        //(void)lock;  // suppress warning until code gets written
++	spinlock_acquire(&lock->lk_spinlock);
++        value= (lock->lk_thread== curthread); // dummy until code gets written
++        spinlock_release(&lock->lk_spinlock);
++        return value;
+ }
+ 
+ ////////////////////////////////////////////////////////////
+@@ -227,7 +287,20 @@ cv_create(const char *name)
+         }
+         
+         // add stuff here as needed
+-        
++        /*
++         * @Author: Student
++         * Implementing Condition Variable by defining the name
++         * and initializing the wait channel
++         */
++
++        cv->cv_wchan= wchan_create(cv->cv_name);
++		if (cv->cv_wchan == NULL) {
++			kfree(cv->cv_name);
++			kfree(cv);
++			return NULL;
++		}
++
++
+         return cv;
+ }
+ 
+@@ -246,22 +319,145 @@ void
+ cv_wait(struct cv *cv, struct lock *lock)
+ {
+         // Write this
+-        (void)cv;    // suppress warning until code gets written
+-        (void)lock;  // suppress warning until code gets written
++//        (void)cv;    // suppress warning until code gets written
++  //      (void)lock;  // suppress warning until code gets written
++
++        /*
++         * Author: Student
++         */
++        if(lock_do_i_hold(lock)) {
++        
++		wchan_lock(cv->cv_wchan);
++		//Release the supplied lock
++		lock_release(lock);
++			wchan_sleep(cv->cv_wchan);
++
++		lock_acquire(lock);
++				
++        }
+ }
+ 
+ void
+ cv_signal(struct cv *cv, struct lock *lock)
+ {
+         // Write this
+-	(void)cv;    // suppress warning until code gets written
+-	(void)lock;  // suppress warning until code gets written
++//	(void)cv;    // suppress warning until code gets written
++//	(void)lock;  // suppress warning until code gets written
++
++	/*
++	 * Author: Student
++	 * Wake up the wchan which is sleeping on the CV
++	 */
++	if(lock_do_i_hold(lock))
++	{
++		wchan_wakeone(cv->cv_wchan);
++	}
+ }
+ 
+ void
+ cv_broadcast(struct cv *cv, struct lock *lock)
+ {
+ 	// Write this
+-	(void)cv;    // suppress warning until code gets written
+-	(void)lock;  // suppress warning until code gets written
++//	(void)cv;    // suppress warning until code gets written
++//	(void)lock;  // suppress warning until code gets written
++	if(lock_do_i_hold(lock)) {
++	wchan_wakeall(cv->cv_wchan);
++	}
+ }
++///////////////////////////////////////////////
++//RW Locks
++
++
++struct rwlock *
++rwlock_create(const char *name)
++{
++	struct rwlock *rw;
++
++	rw = kmalloc(sizeof(rw));
++	if(rw==NULL){
++		return NULL;
++	}
++
++	rw->rwlock_name=kstrdup(name);
++	if(rw->rwlock_name==NULL){
++		kfree(rw);
++		return NULL;
++	}
++
++
++	//Create Semaphore
++	rw->rwlock_semaphore = sem_create(rw->rwlock_name,MAX_READ);
++	if (rw->rwlock_semaphore == NULL) {
++			kfree(rw->rwlock_name);
++			kfree(rw);
++			return NULL;
++	}
++
++	//Create Lock
++	rw->rwlock_lock=lock_create(rw->rwlock_name);
++   	if (rw->rwlock_lock == NULL) {
++   		kfree(rw->rwlock_name);
++   		kfree(rw);
++	    return NULL;
++	}
++
++	return rw;
++}
++
++void
++rwlock_destroy(struct rwlock *rw_lock)
++{
++	KASSERT(rw_lock != NULL);
++
++	        // add stuff here as needed
++		sem_destroy(rw_lock->rwlock_semaphore);
++		lock_destroy(rw_lock->rwlock_lock);
++	    kfree(rw_lock->rwlock_name);
++	    kfree(rw_lock);
++}
++void
++rwlock_acquire_read(struct rwlock *rw_lock)
++{
++	lock_acquire(rw_lock->rwlock_lock);
++
++	P(rw_lock->rwlock_semaphore);
++
++	lock_release(rw_lock->rwlock_lock);
++}
++
++void
++rwlock_release_read(struct rwlock *rw_lock){
++
++	V(rw_lock->rwlock_semaphore);
++}
++
++void
++rwlock_acquire_write(struct rwlock *rw_lock){
++
++	lock_acquire(rw_lock->rwlock_lock);
++
++	while(1)
++	{
++		if(rw_lock->rwlock_semaphore->sem_count!=MAX_READ)
++			continue;
++		else if(rw_lock->rwlock_semaphore->sem_count==MAX_READ)
++		{
++			rw_lock->rwlock_semaphore->sem_count=1;
++			P(rw_lock->rwlock_semaphore);
++			break;
++		}
++	}
++
++	lock_release(rw_lock->rwlock_lock);
++}
++
++void
++rwlock_release_write(struct rwlock *rw_lock){
++
++	rw_lock->rwlock_semaphore->sem_count=MAX_READ-1;
++	V(rw_lock->rwlock_semaphore);
++
++
++}
++
++
