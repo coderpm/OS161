@@ -152,8 +152,6 @@ struct rwlock {
         //struct wchan *rw_wchan;
         //bool writer_inside;
         struct lock *rwlock_lock;
-        //volatile int read_count;
-	
 };
 
 struct rwlock * rwlock_create(const char *);
