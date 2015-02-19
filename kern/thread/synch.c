@@ -150,6 +150,9 @@ V(struct semaphore *sem)
 struct lock *
 lock_create(const char *name)
 {
+
+	DEBUG(DB_THREADS,
+							      "Inside Lock_create");
         struct lock *lock;
 
         lock = kmalloc(sizeof(struct lock));
@@ -173,6 +176,9 @@ lock_create(const char *name)
         spinlock_init(&lock->lk_spinlock);
         lock->lock_hold=0;
         lock->lk_thread= NULL;
+
+        DEBUG(DB_THREADS,
+        				"Exiting lock_create");
         return lock;
 }
 
@@ -192,6 +198,8 @@ void
 lock_acquire(struct lock *lock)
 {
         // Write this
+	DEBUG(DB_THREADS,
+	        				"Inside lock_acquire");
 	struct thread *mythread;
 	KASSERT(lock != NULL);
     KASSERT(curthread->t_in_interrupt == false);
@@ -226,6 +234,8 @@ lock_acquire(struct lock *lock)
 	  //KASSERT(lock->lock_count > 0);
 
        //(void)lock;  // suppress warning until code gets written
+	DEBUG(DB_THREADS,
+	        				"Exiting lock_acquire");
 }
 
 void
@@ -392,7 +402,7 @@ rwlock_create(const char *name)
 			kfree(rw);
 			return NULL;
 	}
-
+	//rw->read_count=0;
 	//Create Lock
 	rw->rwlock_lock=lock_create(rw->rwlock_name);
    	if (rw->rwlock_lock == NULL) {
@@ -421,6 +431,7 @@ rwlock_acquire_read(struct rwlock *rw_lock)
 	lock_acquire(rw_lock->rwlock_lock);
 
 	P(rw_lock->rwlock_semaphore);
+	//rw_lock->read_count++;
 
 	lock_release(rw_lock->rwlock_lock);
 }
@@ -429,6 +440,7 @@ void
 rwlock_release_read(struct rwlock *rw_lock){
 
 	V(rw_lock->rwlock_semaphore);
+	//rw_lock->read_count--;
 }
 
 void

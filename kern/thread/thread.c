@@ -168,6 +168,8 @@ thread_create(const char *name)
 struct cpu *
 cpu_create(unsigned hardware_number)
 {
+	DEBUG(DB_THREADS,
+					      "Inside cpu_create");
 	struct cpu *c;
 	int result;
 	char namebuf[16];
@@ -222,6 +224,9 @@ cpu_create(unsigned hardware_number)
 	c->c_curthread->t_cpu = c;
 
 	cpu_machdep_init(c);
+
+	DEBUG(DB_THREADS,
+					      "Leaving cpu_create");
 
 	return c;
 }
@@ -293,6 +298,8 @@ exorcise(void)
 void
 thread_panic(void)
 {
+	DEBUG(DB_THREADS,
+					      "Inside thread_panic");
 	/*
 	 * Kill off other CPUs.
 	 *
@@ -327,6 +334,8 @@ thread_panic(void)
 	 * might be needed. It may also be necessary to go through and
 	 * forcibly unlock all locks or the like...
 	 */
+	DEBUG(DB_THREADS,
+						      "Exiting thread_panic");
 }
 
 /*
@@ -436,6 +445,7 @@ static
 void
 thread_make_runnable(struct thread *target, bool already_have_lock)
 {
+
 	struct cpu *targetcpu;
 	bool isidle;
 
@@ -1070,7 +1080,8 @@ wchan_wakeone(struct wchan *wc)
 		/* Nobody was sleeping. */
 		return;
 	}
-
+	DEBUG(DB_THREADS,
+				      "Waking thread UP");
 	thread_make_runnable(target, false);
 }
 
@@ -1108,6 +1119,8 @@ wchan_wakeall(struct wchan *wc)
 		thread_make_runnable(target, false);
 	}
 
+	DEBUG(DB_THREADS,
+					      "Waking All threads UP");
 	threadlist_cleanup(&list);
 }
 
