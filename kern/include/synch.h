@@ -150,7 +150,6 @@ struct rwlock {
         char *rwlock_name;
         struct semaphore *rwlock_semaphore;
         struct lock *rwlock_lock;
-	
 };
 
 struct rwlock * rwlock_create(const char *);
