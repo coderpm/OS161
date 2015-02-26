@@ -38,10 +38,12 @@
 
 #include <spinlock.h>
 #include <threadlist.h>
+#include <limits.h>
 
 struct addrspace;
 struct cpu;
 struct vnode;
+struct file_descriptor;
 
 /* get machine-dependent defs */
 #include <machine/thread.h>
@@ -64,6 +66,8 @@ typedef enum {
 	S_SLEEP,	/* sleeping */
 	S_ZOMBIE,	/* zombie; exited but not yet deleted */
 } threadstate_t;
+
+
 
 /* Thread structure. */
 struct thread {
@@ -112,6 +116,8 @@ struct thread {
 	struct vnode *t_cwd;		/* current working directory */
 
 	/* add more here as needed */
+
+	struct file_descriptor file_table[__OPEN_MAX];
 };
 
 /* Call once during system startup to allocate data structures. */
