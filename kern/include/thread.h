@@ -39,11 +39,18 @@
 #include <spinlock.h>
 #include <threadlist.h>
 #include <limits.h>
+/**
+ * Author: Pratham Malik
+ * included psyscalls.h and declared the process structure
+ */
+#include <psyscall.h>
+
+struct process_control;
+//End of Additions by Pratham Malik
 
 struct addrspace;
 struct cpu;
 struct vnode;
-struct file_descriptor;
 
 /* get machine-dependent defs */
 #include <machine/thread.h>
@@ -116,8 +123,13 @@ struct thread {
 	struct vnode *t_cwd;		/* current working directory */
 
 	/* add more here as needed */
+	/*
+	 * Author: Pratham Malik
+	 * Added Process structure
+	 */
+	struct process_control *t_pcb;
 
-	struct file_descriptor file_table[__OPEN_MAX];
+//	struct file_descriptor file_table[__OPEN_MAX];
 };
 
 /* Call once during system startup to allocate data structures. */

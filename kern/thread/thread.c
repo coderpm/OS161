@@ -48,6 +48,15 @@
 #include <mainbus.h>
 #include <vnode.h>
 
+
+/*
+ * Author: Pratham Malik
+ * Added header file for process syscalls
+ */
+#include <psyscall.h>
+#include <limits.h>
+//End of adding by Pratham Malik
+
 #include "opt-synchprobs.h"
 #include "opt-defaultscheduler.h"
 
@@ -154,7 +163,17 @@ thread_create(const char *name)
 
 	/* If you add to struct thread, be sure to initialize here */
 
-	thread->file_table= 0;
+	/**
+	 * Author: Pratham Malik
+	 * Initialize the process control block to null
+	 */
+	thread->t_pcb = NULL;
+
+
+	allocate_pid();
+
+
+	//End of Additions by Pratham Malik
 
 	return thread;
 }
@@ -393,6 +412,15 @@ thread_bootstrap(void)
 	curcpu->c_curthread = curthread;
 
 	/* Done */
+	/*
+		 * Author:Pratham Malik
+		 * Initializing the global variable - PID ARRAY
+		 */
+		global_pidarray[PID_MAX]=0;
+		// Call function to initialize the pidlock
+		create_pidlock();
+		//End of Addition by Pratham Malik
+
 }
 
 /*

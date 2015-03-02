@@ -51,7 +51,6 @@
 #include <version.h>
 #include "autoconf.h"  // for pseudoconfig
 
-
 /*
  * These two pieces of data are maintained by the makefiles and build system.
  * buildconfig is the name of the config file the kernel was configured with.
@@ -105,11 +104,14 @@ boot(void)
 		GROUP_VERSION, buildconfig, buildversion);
 	kprintf("\n");
 
+
 	/* Early initialization. */
 	ram_bootstrap();
 	thread_bootstrap();
 	hardclock_bootstrap();
 	vfs_bootstrap();
+
+
 
 	/* Probe and initialize devices. Interrupts should come on. */
 	kprintf("Device probe...\n");

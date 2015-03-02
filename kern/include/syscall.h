@@ -30,6 +30,7 @@
 #ifndef _SYSCALL_H_
 #define _SYSCALL_H_
 
+#include <psyscall.h>
 
 struct trapframe; /* from <machine/trapframe.h> */
 

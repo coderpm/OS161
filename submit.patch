@@ -7,8 +7,34 @@ index cbe86ac..ba44f70 100644
  /*
   * This is a pile of crap that tells the linker how to link the kernel,
   * because it's too stupid to be able to work it out on its own.
+diff --git a/kern/arch/mips/syscall/syscall.c b/kern/arch/mips/syscall/syscall.c
+index 0f773bd..c8fd700 100644
+--- a/kern/arch/mips/syscall/syscall.c
++++ b/kern/arch/mips/syscall/syscall.c
+@@ -110,6 +110,9 @@ syscall(struct trapframe *tf)
+ 		break;
+ 
+ 	    /* Add stuff here */
++	    case SYS_getpid:
++		err = sys___getpid(&retval);
++		break;
+  
+ 	    default:
+ 		kprintf("Unknown syscall %d\n", callno);
+diff --git a/kern/conf/conf.kern b/kern/conf/conf.kern
+index d527f61..6b02b02 100644
+--- a/kern/conf/conf.kern
++++ b/kern/conf/conf.kern
+@@ -367,6 +367,7 @@ file      vfs/devnull.c
+ file      syscall/loadelf.c
+ file      syscall/runprogram.c
+ file      syscall/time_syscalls.c
++file      syscall/psyscall.c
+ 
+ #
+ # Startup and initialization
 diff --git a/kern/include/synch.h b/kern/include/synch.h
-index ac3714b..ad08f3b 100644
+index ac3714b..8a53033 100644
 --- a/kern/include/synch.h
 +++ b/kern/include/synch.h
 @@ -29,7 +29,7 @@
@@ -39,7 +65,7 @@ index ac3714b..ad08f3b 100644
          // add what you need here
          // (don't forget to mark things volatile as needed)
  };
-@@ -143,6 +148,12 @@ void cv_broadcast(struct cv *cv, struct lock *lock);
+@@ -143,6 +148,10 @@ void cv_broadcast(struct cv *cv, struct lock *lock);
  
  struct rwlock {
          char *rwlock_name;
@@ -47,13 +73,66 @@ index ac3714b..ad08f3b 100644
 +        //struct wchan *rw_wchan;
 +        //bool writer_inside;
 +        struct lock *rwlock_lock;
-+        //volatile int read_count;
-+	
  };
  
  struct rwlock * rwlock_create(const char *);
+diff --git a/kern/include/syscall.h b/kern/include/syscall.h
+index befd3d8..ed6f24a 100644
+--- a/kern/include/syscall.h
++++ b/kern/include/syscall.h
+@@ -30,6 +30,7 @@
+ #ifndef _SYSCALL_H_
+ #define _SYSCALL_H_
+ 
++#include <psyscall.h>
+ 
+ struct trapframe; /* from <machine/trapframe.h> */
+ 
+diff --git a/kern/include/thread.h b/kern/include/thread.h
+index 86706ca..4011cf6 100644
+--- a/kern/include/thread.h
++++ b/kern/include/thread.h
+@@ -38,6 +38,15 @@
+ 
+ #include <spinlock.h>
+ #include <threadlist.h>
++#include <limits.h>
++/**
++ * Author: Pratham Malik
++ * included psyscalls.h and declared the process structure
++ */
++#include <psyscall.h>
++
++struct process_control;
++//End of Additions by Pratham Malik
+ 
+ struct addrspace;
+ struct cpu;
+@@ -65,6 +74,8 @@ typedef enum {
+ 	S_ZOMBIE,	/* zombie; exited but not yet deleted */
+ } threadstate_t;
+ 
++
++
+ /* Thread structure. */
+ struct thread {
+ 	/*
+@@ -112,6 +123,13 @@ struct thread {
+ 	struct vnode *t_cwd;		/* current working directory */
+ 
+ 	/* add more here as needed */
++	/*
++	 * Author: Pratham Malik
++	 * Added Process structure
++	 */
++	struct process_control *t_pcb;
++
++//	struct file_descriptor file_table[__OPEN_MAX];
+ };
+ 
+ /* Call once during system startup to allocate data structures. */
 diff --git a/kern/startup/main.c b/kern/startup/main.c
-index be4c4b8..3526bd6 100644
+index be4c4b8..68723b7 100644
 --- a/kern/startup/main.c
 +++ b/kern/startup/main.c
 @@ -30,6 +30,7 @@
@@ -64,7 +143,11 @@ index be4c4b8..3526bd6 100644
  
  #include <types.h>
  #include <kern/errno.h>
-@@ -54,7 +55,7 @@
+@@ -50,11 +51,10 @@
+ #include <version.h>
+ #include "autoconf.h"  // for pseudoconfig
+ 
+-
  /*
   * These two pieces of data are maintained by the makefiles and build system.
   * buildconfig is the name of the config file the kernel was configured with.
@@ -73,7 +156,7 @@ index be4c4b8..3526bd6 100644
   *
   * The purpose is not to show off how many kernels you've linked, but
   * to make it easy to make sure that the kernel you just booted is the
-@@ -100,7 +101,7 @@ boot(void)
+@@ -100,16 +100,19 @@ boot(void)
  	kprintf("%s", harvard_copyright);
  	kprintf("\n");
  
@@ -82,6 +165,18 @@ index be4c4b8..3526bd6 100644
  		GROUP_VERSION, buildconfig, buildversion);
  	kprintf("\n");
  
++
+ 	/* Early initialization. */
+ 	ram_bootstrap();
+ 	thread_bootstrap();
+ 	hardclock_bootstrap();
+ 	vfs_bootstrap();
+ 
++
++
+ 	/* Probe and initialize devices. Interrupts should come on. */
+ 	kprintf("Device probe...\n");
+ 	KASSERT(curthread->t_curspl > 0);
 diff --git a/kern/synchprobs/problems.c b/kern/synchprobs/problems.c
 index 81d2f0e..ccf4ee2 100644
 --- a/kern/synchprobs/problems.c
@@ -757,10 +852,45 @@ index 9a7468c..f27b083 100644
 +
 +
 diff --git a/kern/thread/thread.c b/kern/thread/thread.c
-index e7235e3..bd6cbbb 100644
+index e7235e3..62dd52c 100644
 --- a/kern/thread/thread.c
 +++ b/kern/thread/thread.c
-@@ -168,6 +168,8 @@ thread_create(const char *name)
+@@ -48,6 +48,15 @@
+ #include <mainbus.h>
+ #include <vnode.h>
+ 
++
++/*
++ * Author: Pratham Malik
++ * Added header file for process syscalls
++ */
++#include <psyscall.h>
++#include <limits.h>
++//End of adding by Pratham Malik
++
+ #include "opt-synchprobs.h"
+ #include "opt-defaultscheduler.h"
+ 
+@@ -154,6 +163,18 @@ thread_create(const char *name)
+ 
+ 	/* If you add to struct thread, be sure to initialize here */
+ 
++	/**
++	 * Author: Pratham Malik
++	 * Initialize the process control block to null
++	 */
++	thread->t_pcb = NULL;
++
++
++	allocate_pid();
++
++
++	//End of Additions by Pratham Malik
++
+ 	return thread;
+ }
+ 
+@@ -168,6 +189,8 @@ thread_create(const char *name)
  struct cpu *
  cpu_create(unsigned hardware_number)
  {
@@ -769,7 +899,7 @@ index e7235e3..bd6cbbb 100644
  	struct cpu *c;
  	int result;
  	char namebuf[16];
-@@ -223,6 +225,9 @@ cpu_create(unsigned hardware_number)
+@@ -223,6 +246,9 @@ cpu_create(unsigned hardware_number)
  
  	cpu_machdep_init(c);
  
@@ -779,7 +909,7 @@ index e7235e3..bd6cbbb 100644
  	return c;
  }
  
-@@ -293,6 +298,8 @@ exorcise(void)
+@@ -293,6 +319,8 @@ exorcise(void)
  void
  thread_panic(void)
  {
@@ -788,7 +918,7 @@ index e7235e3..bd6cbbb 100644
  	/*
  	 * Kill off other CPUs.
  	 *
-@@ -327,6 +334,8 @@ thread_panic(void)
+@@ -327,6 +355,8 @@ thread_panic(void)
  	 * might be needed. It may also be necessary to go through and
  	 * forcibly unlock all locks or the like...
  	 */
@@ -797,7 +927,23 @@ index e7235e3..bd6cbbb 100644
  }
  
  /*
-@@ -436,6 +445,7 @@ static
+@@ -382,6 +412,15 @@ thread_bootstrap(void)
+ 	curcpu->c_curthread = curthread;
+ 
+ 	/* Done */
++	/*
++		 * Author:Pratham Malik
++		 * Initializing the global variable - PID ARRAY
++		 */
++		global_pidarray[PID_MAX]=0;
++		// Call function to initialize the pidlock
++		create_pidlock();
++		//End of Addition by Pratham Malik
++
+ }
+ 
+ /*
+@@ -436,6 +475,7 @@ static
  void
  thread_make_runnable(struct thread *target, bool already_have_lock)
  {
@@ -805,7 +951,7 @@ index e7235e3..bd6cbbb 100644
  	struct cpu *targetcpu;
  	bool isidle;
  
-@@ -1070,7 +1080,8 @@ wchan_wakeone(struct wchan *wc)
+@@ -1070,7 +1110,8 @@ wchan_wakeone(struct wchan *wc)
  		/* Nobody was sleeping. */
  		return;
  	}
@@ -815,7 +961,7 @@ index e7235e3..bd6cbbb 100644
  	thread_make_runnable(target, false);
  }
  
-@@ -1108,6 +1119,8 @@ wchan_wakeall(struct wchan *wc)
+@@ -1108,6 +1149,8 @@ wchan_wakeall(struct wchan *wc)
  		thread_make_runnable(target, false);
  	}
  
@@ -826,10 +972,10 @@ index e7235e3..bd6cbbb 100644
  
 diff --git a/submit.patch b/submit.patch
 new file mode 100644
-index 0000000..4cb1557
+index 0000000..4779b20
 --- /dev/null
 +++ b/submit.patch
-@@ -0,0 +1,634 @@
+@@ -0,0 +1,812 @@
 +diff --git a/kern/arch/mips/conf/ldscript b/kern/arch/mips/conf/ldscript
 +index cbe86ac..ba44f70 100644
 +--- a/kern/arch/mips/conf/ldscript
@@ -839,8 +985,34 @@ index 0000000..4cb1557
 + /*
 +  * This is a pile of crap that tells the linker how to link the kernel,
 +  * because it's too stupid to be able to work it out on its own.
++diff --git a/kern/arch/mips/syscall/syscall.c b/kern/arch/mips/syscall/syscall.c
++index 0f773bd..c8fd700 100644
++--- a/kern/arch/mips/syscall/syscall.c
+++++ b/kern/arch/mips/syscall/syscall.c
++@@ -110,6 +110,9 @@ syscall(struct trapframe *tf)
++ 		break;
++ 
++ 	    /* Add stuff here */
+++	    case SYS_getpid:
+++		err = sys___getpid(&retval);
+++		break;
++  
++ 	    default:
++ 		kprintf("Unknown syscall %d\n", callno);
++diff --git a/kern/conf/conf.kern b/kern/conf/conf.kern
++index d527f61..6b02b02 100644
++--- a/kern/conf/conf.kern
+++++ b/kern/conf/conf.kern
++@@ -367,6 +367,7 @@ file      vfs/devnull.c
++ file      syscall/loadelf.c
++ file      syscall/runprogram.c
++ file      syscall/time_syscalls.c
+++file      syscall/psyscall.c
++ 
++ #
++ # Startup and initialization
 +diff --git a/kern/include/synch.h b/kern/include/synch.h
-+index ac3714b..ad08f3b 100644
++index ac3714b..8a53033 100644
 +--- a/kern/include/synch.h
 ++++ b/kern/include/synch.h
 +@@ -29,7 +29,7 @@
@@ -871,7 +1043,7 @@ index 0000000..4cb1557
 +         // add what you need here
 +         // (don't forget to mark things volatile as needed)
 + };
-+@@ -143,6 +148,12 @@ void cv_broadcast(struct cv *cv, struct lock *lock);
++@@ -143,6 +148,10 @@ void cv_broadcast(struct cv *cv, struct lock *lock);
 + 
 + struct rwlock {
 +         char *rwlock_name;
@@ -879,13 +1051,66 @@ index 0000000..4cb1557
 ++        //struct wchan *rw_wchan;
 ++        //bool writer_inside;
 ++        struct lock *rwlock_lock;
-++        //volatile int read_count;
-++	
 + };
 + 
 + struct rwlock * rwlock_create(const char *);
++diff --git a/kern/include/syscall.h b/kern/include/syscall.h
++index befd3d8..ed6f24a 100644
++--- a/kern/include/syscall.h
+++++ b/kern/include/syscall.h
++@@ -30,6 +30,7 @@
++ #ifndef _SYSCALL_H_
++ #define _SYSCALL_H_
++ 
+++#include <psyscall.h>
++ 
++ struct trapframe; /* from <machine/trapframe.h> */
++ 
++diff --git a/kern/include/thread.h b/kern/include/thread.h
++index 86706ca..4011cf6 100644
++--- a/kern/include/thread.h
+++++ b/kern/include/thread.h
++@@ -38,6 +38,15 @@
++ 
++ #include <spinlock.h>
++ #include <threadlist.h>
+++#include <limits.h>
+++/**
+++ * Author: Pratham Malik
+++ * included psyscalls.h and declared the process structure
+++ */
+++#include <psyscall.h>
+++
+++struct process_control;
+++//End of Additions by Pratham Malik
++ 
++ struct addrspace;
++ struct cpu;
++@@ -65,6 +74,8 @@ typedef enum {
++ 	S_ZOMBIE,	/* zombie; exited but not yet deleted */
++ } threadstate_t;
++ 
+++
+++
++ /* Thread structure. */
++ struct thread {
++ 	/*
++@@ -112,6 +123,13 @@ struct thread {
++ 	struct vnode *t_cwd;		/* current working directory */
++ 
++ 	/* add more here as needed */
+++	/*
+++	 * Author: Pratham Malik
+++	 * Added Process structure
+++	 */
+++	struct process_control *t_pcb;
+++
+++//	struct file_descriptor file_table[__OPEN_MAX];
++ };
++ 
++ /* Call once during system startup to allocate data structures. */
 +diff --git a/kern/startup/main.c b/kern/startup/main.c
-+index be4c4b8..3526bd6 100644
++index be4c4b8..68723b7 100644
 +--- a/kern/startup/main.c
 ++++ b/kern/startup/main.c
 +@@ -30,6 +30,7 @@
@@ -896,7 +1121,11 @@ index 0000000..4cb1557
 + 
 + #include <types.h>
 + #include <kern/errno.h>
-+@@ -54,7 +55,7 @@
++@@ -50,11 +51,10 @@
++ #include <version.h>
++ #include "autoconf.h"  // for pseudoconfig
++ 
++-
 + /*
 +  * These two pieces of data are maintained by the makefiles and build system.
 +  * buildconfig is the name of the config file the kernel was configured with.
@@ -905,7 +1134,7 @@ index 0000000..4cb1557
 +  *
 +  * The purpose is not to show off how many kernels you've linked, but
 +  * to make it easy to make sure that the kernel you just booted is the
-+@@ -100,7 +101,7 @@ boot(void)
++@@ -100,16 +100,19 @@ boot(void)
 + 	kprintf("%s", harvard_copyright);
 + 	kprintf("\n");
 + 
@@ -914,6 +1143,18 @@ index 0000000..4cb1557
 + 		GROUP_VERSION, buildconfig, buildversion);
 + 	kprintf("\n");
 + 
+++
++ 	/* Early initialization. */
++ 	ram_bootstrap();
++ 	thread_bootstrap();
++ 	hardclock_bootstrap();
++ 	vfs_bootstrap();
++ 
+++
+++
++ 	/* Probe and initialize devices. Interrupts should come on. */
++ 	kprintf("Device probe...\n");
++ 	KASSERT(curthread->t_curspl > 0);
 +diff --git a/kern/synchprobs/problems.c b/kern/synchprobs/problems.c
 +index 81d2f0e..ccf4ee2 100644
 +--- a/kern/synchprobs/problems.c
@@ -1463,5 +1704,101 @@ index 0000000..4cb1557
 + {
 +         // Write this
 +-	(void)cv;    // suppress warning until code gets written
-+-	(void)lock;  // supp
++-	(void)lock;  // suppress warning until code gets written
+++//	(void)cv;    // suppress warning until code gets written
+++//	(void)lock;  // suppress warning until code gets written
+++
+++	/*
+++	 * Author: Student
+++	 * Wake up the wchan which is sleeping on the CV
+++	 */
+++	if(lock_do_i_hold(lock))
+++	{
+++		wchan_wakeone(cv->cv_wchan);
+++	}
++ }
++ 
++ void
++ cv_broadcast(struct cv *cv, struct lock *lock)
++ {
++ 	// Write this
++-	(void)cv;    // suppress warning until code gets written
++-	(void)lock;  // suppress warning until code gets written
+++//	(void)cv;    // suppress warning until code gets written
+++//	(void)lock;  // suppress warning until code gets written
+++	if(lock_do_i_hold(lock)) {
+++	wchan_wakeall(cv->cv_wchan);
+++	}
++ }
+++///////////////////////////////////////////////
+++//RW Locks
+++
+++
+++struct rwlock *
+++rwlock_create(const char *name)
+++{
+++	struct rwlock *rw;
+++
+++	rw = kmalloc(sizeof(rw));
+++	if(rw==NULL){
+++		return NULL;
+++	}
+++
+++	rw->rwlock_name=kstrdup(name);
+++	if(rw->rwlock_name==NULL){
+++		kfree(rw);
+++		return NULL;
+++	}
+++
+++
+++	//Create Semaphore
+++	rw->rwlock_semaphore = sem_create(rw->rwlock_name,MAX_READ);
+++	if (rw->rwlock_semaphore == NULL) {
+++			kfree(rw->rwlock_name);
+++			kfree(rw);
+++			return NULL;
+++	}
+++	//rw->read_count=0;
+++	//Create Lock
+++	rw->rwlock_lock=lock_create(rw->rwlock_name);
+++   	if (rw->rwlock_lock == NULL) {
+++   		kfree(rw->rwlock_name);
+++   		kfree(rw);
+++	    return NULL;
+++	}
+++
+++	return rw;
+++}
+++
+++void
+++rwlock_destroy(struct rwlock *rw_lock)
+++{
+++	KASSERT(rw_lock != NULL);
+++
+++	        // add stuff here as needed
+++		sem_destroy(rw_lock->rwlock_semaphore);
+++		lock_destroy(rw_lock->rwlock_lock);
+++	    kfree(rw_lock->rwlock_name);
+++	    kfree(rw_lock);
+++}
+++void
+++rwlock_acquire_read(struct rwlock *rw_lock)
+++{
+++	lock_acquire(rw_lock->rwlock_lock);
+++
+++	P(rw_lock->rwlock_semaphore);
+++	//rw_lock->read_c
 \ No newline at end of file
+diff --git a/user/lib/libc/stdlib/malloc.c b/user/lib/libc/stdlib/malloc.c
+index ad0c91c..b440d5b 100644
+--- a/user/lib/libc/stdlib/malloc.c
++++ b/user/lib/libc/stdlib/malloc.c
+@@ -153,7 +153,7 @@ __malloc_init(void)
+ 	 * Check various assumed properties of the sizes.
+ 	 */
+ 	if (sizeof(struct mheader) != MBLOCKSIZE) {
+-		errx(1, "malloc: Internal error - MBLOCKSIZE wrong");
++ss		errx(1, "malloc: Internal error - MBLOCKSIZE wrong");
+ 	}
+ 	if ((MBLOCKSIZE & (MBLOCKSIZE-1))!=0) {
+ 		errx(1, "malloc: Internal error - MBLOCKSIZE not power of 2");
