@@ -62,6 +62,7 @@
 #include <limits.h>
 
 extern struct process_control *process_array[PROCESS_MAX];
+struct lock *pid_lock;
 
 //End of adding by Pratham Malik
 

@@ -55,7 +55,7 @@ allocate_pid(void);
 void
 deallocate_pid(void);
 
-struct lock *pid_lock;
+extern struct lock *pid_lock;
 
 void
 create_pidlock(void);

@@ -10,7 +10,7 @@
 //#include <psyscall.h>
 
 struct process_control *process_array[PROCESS_MAX];
-
+struct lock *pid_lock;
 /*
  * Fork System Call:: Forks a new process
  * Returns two values to child and Parent.
