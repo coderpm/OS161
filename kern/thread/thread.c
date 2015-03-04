@@ -388,8 +388,25 @@ thread_shutdown(void)
 void
 thread_bootstrap(void)
 {
+
 	struct cpu *bootcpu;
 	struct thread *bootthread;
+
+	/*
+	* Author:Pratham Malik
+	* Initializing the global variable - process_array
+	*/
+	// Call function to initialize the pidlock
+
+	create_pidlock();
+
+	//Initialize the process variables to 0
+	for(int count=0;count<PROCESS_MAX;count++)
+	{
+		process_array[count]=0;
+	}
+
+	//End of Addition by Pratham Malik
 
 	cpuarray_init(&allcpus);
 	create_pidlock();

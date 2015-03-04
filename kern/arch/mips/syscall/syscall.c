@@ -110,7 +110,6 @@ syscall(struct trapframe *tf)
 				 (userptr_t)tf->tf_a1);
 		break;
 
-
 	    case SYS_open:
 	    	err= sys_open((userptr_t)tf->tf_a0,
 	    			tf->tf_a1, &retval);
@@ -121,16 +120,17 @@ syscall(struct trapframe *tf)
 	    			tf->tf_a2, &retval);
 	    break;
 	    case SYS_write:
-	    	    err= sys_write(tf->tf_a0, (userptr_t)tf->tf_a1,
-	    	  			tf->tf_a2, &retval);
+	    err= sys_write(tf->tf_a0, (userptr_t)tf->tf_a1,
+	    		tf->tf_a2, &retval);
 	    break;
+
 	    case SYS_dup2:
-	      	    err= dup2(tf->tf_a0,tf->tf_a1, &retval);
+	    err= dup2(tf->tf_a0,tf->tf_a1, &retval);
 	    break;
 
 	    case SYS___getcwd:
-	    	err= __getcwd((userptr_t)tf->tf_a0,
-	    			tf->tf_a1, &retval);
+	    err= __getcwd((userptr_t)tf->tf_a0,
+	    		tf->tf_a1, &retval);
 	    break;
 
 	    /*case SYS_lseek:
