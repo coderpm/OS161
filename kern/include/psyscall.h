@@ -50,7 +50,7 @@ int
 sys___waitpid(userptr_t processid,int *status,userptr_t options);
 
 void
-allocate_pid(void);
+allocate_pid(int *pid);
 
 void
 deallocate_pid(void);

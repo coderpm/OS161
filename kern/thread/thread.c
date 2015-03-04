@@ -178,7 +178,31 @@ thread_create(const char *name)
 	 * Author: Pratham Malik
 	 * Call allocate function for allocating a pid to the thread
 	 */
-	allocate_pid();
+//	allocate_pid(&thread->t_pid);
+
+	for(int i=PID_MIN;i<PROCESS_MAX;i++)
+	{
+		if(process_array[i]==0)
+		{
+			struct process_control *p_array;
+
+			p_array=kmalloc(sizeof(p_array));
+
+			thread->t_pid=i;
+
+			p_array->parent_id=-1;
+			p_array->childlist=NULL;
+			p_array->exit_code=-1;
+			p_array->exit_status=false;
+			p_array->mythread=thread;
+
+
+			//Copy back into the thread
+			process_array[i]=p_array;
+			break;
+		}
+	}
+
 
 	//End of Additions by Pratham Malik
 
@@ -398,18 +422,9 @@ thread_bootstrap(void)
 	*/
 	// Call function to initialize the pidlock
 
-	create_pidlock();
-
-	//Initialize the process variables to 0
-	for(int count=0;count<PROCESS_MAX;count++)
-	{
-		process_array[count]=0;
-	}
-
-	//End of Addition by Pratham Malik
 
 	cpuarray_init(&allcpus);
-	create_pidlock();
+	//create_pidlock();
 	/*
 		* Author:Pratham Malik
 		* Initializing the global variable - process_array

@@ -34,10 +34,10 @@ sys___fork(pid_t  *returnval, struct trapframe *tf)
  */
 
 void
-allocate_pid(void)
+allocate_pid(int *pid)
 {
 //Take lock before allocating the pid
-	lock_acquire(pid_lock);
+	//lock_acquire(pid_lock);
 
 	for(int i=PID_MIN;i<PROCESS_MAX;i++)
 	{
@@ -47,7 +47,7 @@ allocate_pid(void)
 
 			p_array=kmalloc(sizeof(p_array));
 
-			curthread->t_pid=i;
+			*pid=i;
 
 			p_array->parent_id=-1;
 			p_array->childlist=NULL;
@@ -65,7 +65,7 @@ allocate_pid(void)
 		}
 	}
 
-	lock_release(pid_lock);
+	//lock_release(pid_lock);
 
 }
 
@@ -114,7 +114,7 @@ sys___exit(userptr_t exit_code)
 	//Check whether to indicate exit by calling cv_broadcast as well -- Approach Discarded
 	//Now using a semaphore and V when the thread exits
 
-	V(process_array[pid_process]->exit_semaphore);
+	//V(process_array[pid_process]->exit_semaphore);
 
 
 	thread_exit();
@@ -132,11 +132,12 @@ sys___waitpid(userptr_t processid,int *status,userptr_t options)
 	//Check whether the pid exists in your child list
 	pid_t pid_process= (int32_t) processid;
 
+	/**
 	while(!(process_array[pid_process]->exit_status))
 	{
-		P(process_array[pid_process]->exit_semaphore);
+//		P(process_array[pid_process]->exit_semaphore);
 	}
-
+*/
 	*status = (intptr_t) process_array[pid_process]->exit_code;
 
 	//Destroy Child's Process Structure
