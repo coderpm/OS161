@@ -54,6 +54,16 @@
 
 #include "opt-synchprobs.h"
 #include "opt-defaultscheduler.h"
+/*
+ * Author: Pratham Malik
+ * Added header file for process syscalls
+ */
+//#include <psyscall.h>
+#include <limits.h>
+
+extern struct process_control *process_array[PROCESS_MAX];
+
+//End of adding by Pratham Malik
 
 
 /* Magic number used as a guard value on kernel thread stacks. */
@@ -162,6 +172,15 @@ thread_create(const char *name)
 	 *started
 	 */
 	/*Ended*/
+
+	/**
+	 * Author: Pratham Malik
+	 * Call allocate function for allocating a pid to the thread
+	 */
+	allocate_pid();
+
+	//End of Additions by Pratham Malik
+
 
 	return thread;
 }
@@ -400,6 +419,23 @@ thread_bootstrap(void)
 	curcpu->c_curthread = curthread;
 
 	/* Done */
+
+	/*
+	* Author:Pratham Malik
+	* Initializing the global variable - process_array
+	*/
+	// Call function to initialize the pidlock
+
+	create_pidlock();
+
+	//Initialize the process variables to 0
+	for(int count=0;count<PROCESS_MAX;count++)
+	{
+		process_array[count]=0;
+	}
+
+	//End of Addition by Pratham Malik
+
 }
 
 /*

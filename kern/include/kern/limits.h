@@ -71,6 +71,8 @@
 /* Max bytes for atomic pipe I/O -- see description in the pipe() man page */
 #define __PIPE_BUF      512
 
+/* Max value for a processes (Maximum number of user process that can run) */
+#define __PROCESS_MAX       512
 
 /*
  * Not so important parts of the API.
