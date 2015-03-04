@@ -10,7 +10,7 @@
 //#include <psyscall.h>
 
 struct process_control *process_array[PROCESS_MAX];
-
+struct lock *pid_lock;
 /*
  * Fork System Call:: Forks a new process
  * Returns two values to child and Parent.
@@ -81,9 +81,11 @@ deallocate_pid(void)
 	{
 		if(i==processid)
 		{
+			process_array[i]->parent_id=-1;
 			process_array[i]=0;
 			//Write more to free the memory occupied and clear the child memory
 			//Also destroy the synchronization variable
+
 			break;
 		}
 	}

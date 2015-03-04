@@ -62,6 +62,7 @@
 #include <limits.h>
 
 extern struct process_control *process_array[PROCESS_MAX];
+struct lock *pid_lock;
 
 //End of adding by Pratham Malik
 
@@ -391,6 +392,23 @@ thread_bootstrap(void)
 	struct thread *bootthread;
 
 	cpuarray_init(&allcpus);
+	create_pidlock();
+	/*
+		* Author:Pratham Malik
+		* Initializing the global variable - process_array
+		*/
+		// Call function to initialize the pidlock
+
+
+
+		//Initialize the process variables to 0
+		for(int count=0;count<PROCESS_MAX;count++)
+		{
+			process_array[count]=0;
+		}
+
+		//End of Addition by Pratham Malik
+
 
 	/*
 	 * Create the cpu structure for the bootup CPU, the one we're
@@ -420,21 +438,6 @@ thread_bootstrap(void)
 
 	/* Done */
 
-	/*
-	* Author:Pratham Malik
-	* Initializing the global variable - process_array
-	*/
-	// Call function to initialize the pidlock
-
-	create_pidlock();
-
-	//Initialize the process variables to 0
-	for(int count=0;count<PROCESS_MAX;count++)
-	{
-		process_array[count]=0;
-	}
-
-	//End of Addition by Pratham Malik
 
 }
 
