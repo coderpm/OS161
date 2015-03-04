@@ -376,9 +376,9 @@ chdir(userptr_t pathname){
 return 0;
 }
 
-int
+/*int
 lseek(int fd, off_t pos, int whence){
 	off_t result;
 
 return 0;
-}
+}*/

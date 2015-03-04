@@ -132,6 +132,11 @@ syscall(struct trapframe *tf)
 	    			tf->tf_a1, &retval);
 	    break;
 
+	    /*case SYS_lseek:
+	    	off_t lseek_variable= tf->tf_a3 + tf->tf_a2;
+	    	err= lseek();
+	    break;*/
+
 	    /* Add stuff
 	     *  here */
  
