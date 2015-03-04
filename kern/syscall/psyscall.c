@@ -81,9 +81,11 @@ deallocate_pid(void)
 	{
 		if(i==processid)
 		{
+			process_array[i]->parent_id=-1;
 			process_array[i]=0;
 			//Write more to free the memory occupied and clear the child memory
 			//Also destroy the synchronization variable
+
 			break;
 		}
 	}
