@@ -123,13 +123,13 @@ struct thread {
 	struct vnode *t_cwd;		/* current working directory */
 
 	/* add more here as needed */
+
 	/*
 	 * Author: Pratham Malik
-	 * Added Process structure
+	 * Added Process id variable for every thread
 	 */
-	struct process_control *t_pcb;
+		pid_t t_pid;
 
-//	struct file_descriptor file_table[__OPEN_MAX];
 };
 
 /* Call once during system startup to allocate data structures. */

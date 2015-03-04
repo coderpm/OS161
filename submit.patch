@@ -8,19 +8,21 @@ index cbe86ac..ba44f70 100644
   * This is a pile of crap that tells the linker how to link the kernel,
   * because it's too stupid to be able to work it out on its own.
 diff --git a/kern/arch/mips/syscall/syscall.c b/kern/arch/mips/syscall/syscall.c
-index 0f773bd..c8fd700 100644
+index 0f773bd..e5e9cac 100644
 --- a/kern/arch/mips/syscall/syscall.c
 +++ b/kern/arch/mips/syscall/syscall.c
-@@ -110,6 +110,9 @@ syscall(struct trapframe *tf)
+@@ -110,7 +110,10 @@ syscall(struct trapframe *tf)
  		break;
  
  	    /* Add stuff here */
+- 
 +	    case SYS_getpid:
 +		err = sys___getpid(&retval);
 +		break;
-  
++
  	    default:
  		kprintf("Unknown syscall %d\n", callno);
+ 		err = ENOSYS;
 diff --git a/kern/conf/conf.kern b/kern/conf/conf.kern
 index d527f61..6b02b02 100644
 --- a/kern/conf/conf.kern
@@ -33,6 +35,79 @@ index d527f61..6b02b02 100644
  
  #
  # Startup and initialization
+diff --git a/kern/include/psyscall.h b/kern/include/psyscall.h
+new file mode 100644
+index 0000000..b72c95d
+--- /dev/null
++++ b/kern/include/psyscall.h
+@@ -0,0 +1,67 @@
++#ifndef _PSYSCALL_H_
++#define _PSYSCALL_H_
++
++#include <types.h>
++#include <thread.h>
++#include <limits.h>
++
++struct trapframe;
++struct thread;
++
++/**
++ * Declared array for pid tracking
++ */
++	 int32_t global_pidarray[PID_MAX];
++
++int
++sys___getpid(int32_t *retval);
++
++
++void
++allocate_pid(pid_t *);
++
++void
++deallocate_pid(void);
++
++struct lock *pid_lock;
++
++void
++create_pidlock(void);
++
++
++/**
++ * Structure for Process Control
++ */
++struct process_control{
++	/* process pid */
++	pid_t process_id;
++	pid_t parent_id;
++
++	//Child Process
++	struct child_process *childlist;
++
++	bool exit_status;
++	int exit_code;
++
++};
++
++struct child_process{
++	pid_t child_pid;
++	struct child_process *next;
++};
++
++
++
++/*
++ * Functions for waitpid
++ */
++//waitpid(pid_t pid, int *status, int options);
++
++
++/*
++ * Fork syscall
++ */
++//int sys___fork(pid_t  *returnval, struct trapframe *tf);
++
++
++#endif /* _PSYSCALL_H_ */
 diff --git a/kern/include/synch.h b/kern/include/synch.h
 index ac3714b..8a53033 100644
 --- a/kern/include/synch.h
@@ -525,6 +600,107 @@ index 81d2f0e..ccf4ee2 100644
    V(stoplightMenuSemaphore);
    return;
  }
+diff --git a/kern/syscall/psyscall.c b/kern/syscall/psyscall.c
+new file mode 100644
+index 0000000..5583e05
+--- /dev/null
++++ b/kern/syscall/psyscall.c
+@@ -0,0 +1,95 @@
++
++#include <types.h>
++#include <clock.h>
++#include <copyinout.h>
++#include <lib.h>
++#include <thread.h>
++#include <limits.h>
++#include <current.h>
++#include <synch.h>
++
++//#include <psyscall.h>
++/*
++ * Fork System Call:: Forks a new process
++ * Returns two values to child and Parent.
++
++
++int
++sys___fork(pid_t  *returnval, struct trapframe *tf)
++{
++	struct trapframe *child_trapframe;
++	child_trapframe = tf;
++
++
++	return returnval;
++}
++*/
++/**
++ * Function for allocation pid from global array of
++ * process id
++ * 1 : Signifies that index location is taken
++ * Never initialize the array index at 1
++ */
++
++void
++allocate_pid(pid_t *processid)
++{
++//Take lock before allocating the pid
++	lock_acquire(pid_lock);
++
++	for(int32_t i=PID_MIN;i<PID_MAX;i++)
++	{
++		if(global_pidarray[i]==0){
++			global_pidarray[i]=1;
++			curthread->t_pcb->process_id=i;
++			curthread->t_pcb->parent_id=-1;
++		//	curthread->t_pcb->childlist;
++			break;
++		}
++	}
++
++	lock_release(pid_lock);
++
++}
++
++void
++deallocate_pid(void)
++{
++lock_acquire(pid_lock);
++
++pid_t processid=curthread->t_pcb->process_id;
++
++	for(int32_t i=PID_MIN;i<PID_MAX;i++)
++	{
++		if(global_pidarray[i]==processid)
++		{
++			global_pidarray[i]=0;
++			break;
++		}
++
++	}
++
++lock_release(pid_lock);
++}
++
++
++int
++sys___getpid(int32_t *retval)
++{
++	*retval = curthread->t_pcb->parent_id;
++	return 0;
++
++}
++
++
++
++/**
++ * Create lock for the pid allocation
++*/
++
++
++void
++create_pidlock(void)
++{
++	pid_lock = lock_create("pid_lock");
++}
 diff --git a/kern/thread/synch.c b/kern/thread/synch.c
 index 9a7468c..f27b083 100644
 --- a/kern/thread/synch.c
@@ -852,7 +1028,7 @@ index 9a7468c..f27b083 100644
 +
 +
 diff --git a/kern/thread/thread.c b/kern/thread/thread.c
-index e7235e3..62dd52c 100644
+index e7235e3..d24b03a 100644
 --- a/kern/thread/thread.c
 +++ b/kern/thread/thread.c
 @@ -48,6 +48,15 @@
@@ -871,7 +1047,16 @@ index e7235e3..62dd52c 100644
  #include "opt-synchprobs.h"
  #include "opt-defaultscheduler.h"
  
-@@ -154,6 +163,18 @@ thread_create(const char *name)
+@@ -118,6 +127,8 @@ struct thread *
+ thread_create(const char *name)
+ {
+ 	struct thread *thread;
++//Added by Pratham Malik
++	pid_t processid;
+ 
+ 	DEBUGASSERT(name != NULL);
+ 
+@@ -154,6 +165,18 @@ thread_create(const char *name)
  
  	/* If you add to struct thread, be sure to initialize here */
  
@@ -882,7 +1067,7 @@ index e7235e3..62dd52c 100644
 +	thread->t_pcb = NULL;
 +
 +
-+	allocate_pid();
++	allocate_pid(&processid);
 +
 +
 +	//End of Additions by Pratham Malik
@@ -890,7 +1075,7 @@ index e7235e3..62dd52c 100644
  	return thread;
  }
  
-@@ -168,6 +189,8 @@ thread_create(const char *name)
+@@ -168,6 +191,8 @@ thread_create(const char *name)
  struct cpu *
  cpu_create(unsigned hardware_number)
  {
@@ -899,7 +1084,7 @@ index e7235e3..62dd52c 100644
  	struct cpu *c;
  	int result;
  	char namebuf[16];
-@@ -223,6 +246,9 @@ cpu_create(unsigned hardware_number)
+@@ -223,6 +248,9 @@ cpu_create(unsigned hardware_number)
  
  	cpu_machdep_init(c);
  
@@ -909,7 +1094,7 @@ index e7235e3..62dd52c 100644
  	return c;
  }
  
-@@ -293,6 +319,8 @@ exorcise(void)
+@@ -293,6 +321,8 @@ exorcise(void)
  void
  thread_panic(void)
  {
@@ -918,7 +1103,7 @@ index e7235e3..62dd52c 100644
  	/*
  	 * Kill off other CPUs.
  	 *
-@@ -327,6 +355,8 @@ thread_panic(void)
+@@ -327,6 +357,8 @@ thread_panic(void)
  	 * might be needed. It may also be necessary to go through and
  	 * forcibly unlock all locks or the like...
  	 */
@@ -927,7 +1112,7 @@ index e7235e3..62dd52c 100644
  }
  
  /*
-@@ -382,6 +412,15 @@ thread_bootstrap(void)
+@@ -382,6 +414,14 @@ thread_bootstrap(void)
  	curcpu->c_curthread = curthread;
  
  	/* Done */
@@ -935,7 +1120,6 @@ index e7235e3..62dd52c 100644
 +		 * Author:Pratham Malik
 +		 * Initializing the global variable - PID ARRAY
 +		 */
-+		global_pidarray[PID_MAX]=0;
 +		// Call function to initialize the pidlock
 +		create_pidlock();
 +		//End of Addition by Pratham Malik
@@ -943,7 +1127,7 @@ index e7235e3..62dd52c 100644
  }
  
  /*
-@@ -436,6 +475,7 @@ static
+@@ -436,6 +476,7 @@ static
  void
  thread_make_runnable(struct thread *target, bool already_have_lock)
  {
@@ -951,7 +1135,7 @@ index e7235e3..62dd52c 100644
  	struct cpu *targetcpu;
  	bool isidle;
  
-@@ -1070,7 +1110,8 @@ wchan_wakeone(struct wchan *wc)
+@@ -1070,7 +1111,8 @@ wchan_wakeone(struct wchan *wc)
  		/* Nobody was sleeping. */
  		return;
  	}
@@ -961,7 +1145,7 @@ index e7235e3..62dd52c 100644
  	thread_make_runnable(target, false);
  }
  
-@@ -1108,6 +1149,8 @@ wchan_wakeall(struct wchan *wc)
+@@ -1108,6 +1150,8 @@ wchan_wakeall(struct wchan *wc)
  		thread_make_runnable(target, false);
  	}
  
@@ -972,10 +1156,10 @@ index e7235e3..62dd52c 100644
  
 diff --git a/submit.patch b/submit.patch
 new file mode 100644
-index 0000000..4779b20
+index 0000000..eef4418
 --- /dev/null
 +++ b/submit.patch
-@@ -0,0 +1,812 @@
+@@ -0,0 +1,1059 @@
 +diff --git a/kern/arch/mips/conf/ldscript b/kern/arch/mips/conf/ldscript
 +index cbe86ac..ba44f70 100644
 +--- a/kern/arch/mips/conf/ldscript
@@ -986,19 +1170,21 @@ index 0000000..4779b20
 +  * This is a pile of crap that tells the linker how to link the kernel,
 +  * because it's too stupid to be able to work it out on its own.
 +diff --git a/kern/arch/mips/syscall/syscall.c b/kern/arch/mips/syscall/syscall.c
-+index 0f773bd..c8fd700 100644
++index 0f773bd..e5e9cac 100644
 +--- a/kern/arch/mips/syscall/syscall.c
 ++++ b/kern/arch/mips/syscall/syscall.c
-+@@ -110,6 +110,9 @@ syscall(struct trapframe *tf)
++@@ -110,7 +110,10 @@ syscall(struct trapframe *tf)
 + 		break;
 + 
 + 	    /* Add stuff here */
++- 
 ++	    case SYS_getpid:
 ++		err = sys___getpid(&retval);
 ++		break;
-+  
+++
 + 	    default:
 + 		kprintf("Unknown syscall %d\n", callno);
++ 		err = ENOSYS;
 +diff --git a/kern/conf/conf.kern b/kern/conf/conf.kern
 +index d527f61..6b02b02 100644
 +--- a/kern/conf/conf.kern
@@ -1011,6 +1197,79 @@ index 0000000..4779b20
 + 
 + #
 + # Startup and initialization
++diff --git a/kern/include/psyscall.h b/kern/include/psyscall.h
++new file mode 100644
++index 0000000..b72c95d
++--- /dev/null
+++++ b/kern/include/psyscall.h
++@@ -0,0 +1,67 @@
+++#ifndef _PSYSCALL_H_
+++#define _PSYSCALL_H_
+++
+++#include <types.h>
+++#include <thread.h>
+++#include <limits.h>
+++
+++struct trapframe;
+++struct thread;
+++
+++/**
+++ * Declared array for pid tracking
+++ */
+++	 int32_t global_pidarray[PID_MAX];
+++
+++int
+++sys___getpid(int32_t *retval);
+++
+++
+++void
+++allocate_pid(pid_t *);
+++
+++void
+++deallocate_pid(void);
+++
+++struct lock *pid_lock;
+++
+++void
+++create_pidlock(void);
+++
+++
+++/**
+++ * Structure for Process Control
+++ */
+++struct process_control{
+++	/* process pid */
+++	pid_t process_id;
+++	pid_t parent_id;
+++
+++	//Child Process
+++	struct child_process *childlist;
+++
+++	bool exit_status;
+++	int exit_code;
+++
+++};
+++
+++struct child_process{
+++	pid_t child_pid;
+++	struct child_process *next;
+++};
+++
+++
+++
+++/*
+++ * Functions for waitpid
+++ */
+++//waitpid(pid_t pid, int *status, int options);
+++
+++
+++/*
+++ * Fork syscall
+++ */
+++//int sys___fork(pid_t  *returnval, struct trapframe *tf);
+++
+++
+++#endif /* _PSYSCALL_H_ */
 +diff --git a/kern/include/synch.h b/kern/include/synch.h
 +index ac3714b..8a53033 100644
 +--- a/kern/include/synch.h
@@ -1503,6 +1762,107 @@ index 0000000..4779b20
 +   V(stoplightMenuSemaphore);
 +   return;
 + }
++diff --git a/kern/syscall/psyscall.c b/kern/syscall/psyscall.c
++new file mode 100644
++index 0000000..5583e05
++--- /dev/null
+++++ b/kern/syscall/psyscall.c
++@@ -0,0 +1,95 @@
+++
+++#include <types.h>
+++#include <clock.h>
+++#include <copyinout.h>
+++#include <lib.h>
+++#include <thread.h>
+++#include <limits.h>
+++#include <current.h>
+++#include <synch.h>
+++
+++//#include <psyscall.h>
+++/*
+++ * Fork System Call:: Forks a new process
+++ * Returns two values to child and Parent.
+++
+++
+++int
+++sys___fork(pid_t  *returnval, struct trapframe *tf)
+++{
+++	struct trapframe *child_trapframe;
+++	child_trapframe = tf;
+++
+++
+++	return returnval;
+++}
+++*/
+++/**
+++ * Function for allocation pid from global array of
+++ * process id
+++ * 1 : Signifies that index location is taken
+++ * Never initialize the array index at 1
+++ */
+++
+++void
+++allocate_pid(pid_t *processid)
+++{
+++//Take lock before allocating the pid
+++	lock_acquire(pid_lock);
+++
+++	for(int32_t i=PID_MIN;i<PID_MAX;i++)
+++	{
+++		if(global_pidarray[i]==0){
+++			global_pidarray[i]=1;
+++			curthread->t_pcb->process_id=i;
+++			curthread->t_pcb->parent_id=-1;
+++		//	curthread->t_pcb->childlist;
+++			break;
+++		}
+++	}
+++
+++	lock_release(pid_lock);
+++
+++}
+++
+++void
+++deallocate_pid(void)
+++{
+++lock_acquire(pid_lock);
+++
+++pid_t processid=curthread->t_pcb->process_id;
+++
+++	for(int32_t i=PID_MIN;i<PID_MAX;i++)
+++	{
+++		if(global_pidarray[i]==processid)
+++		{
+++			global_pidarray[i]=0;
+++			break;
+++		}
+++
+++	}
+++
+++lock_release(pid_lock);
+++}
+++
+++
+++int
+++sys___getpid(int32_t *retval)
+++{
+++	*retval = curthread->t_pcb->parent_id;
+++	return 0;
+++
+++}
+++
+++
+++
+++/**
+++ * Create lock for the pid allocation
+++*/
+++
+++
+++void
+++create_pidlock(void)
+++{
+++	pid_lock = lock_create("pid_lock");
+++}
 +diff --git a/kern/thread/synch.c b/kern/thread/synch.c
 +index 9a7468c..f27b083 100644
 +--- a/kern/thread/synch.c
@@ -1787,7 +2147,78 @@ index 0000000..4779b20
 ++	lock_acquire(rw_lock->rwlock_lock);
 ++
 ++	P(rw_lock->rwlock_semaphore);
-++	//rw_lock->read_c
+++	//rw_lock->read_count++;
+++
+++	lock_release(rw_lock->rwlock_lock);
+++}
+++
+++void
+++rwlock_release_read(struct rwlock *rw_lock){
+++
+++	V(rw_lock->rwlock_semaphore);
+++	//rw_lock->read_count--;
+++}
+++
+++void
+++rwlock_acquire_write(struct rwlock *rw_lock){
+++
+++	lock_acquire(rw_lock->rwlock_lock);
+++
+++	while(1)
+++	{
+++		if(rw_lock->rwlock_semaphore->sem_count!=MAX_READ)
+++			continue;
+++		else if(rw_lock->rwlock_semaphore->sem_count==MAX_READ)
+++		{
+++			rw_lock->rwlock_semaphore->sem_count=1;
+++			P(rw_lock->rwlock_semaphore);
+++			break;
+++		}
+++	}
+++
+++	lock_release(rw_lock->rwlock_lock);
+++}
+++
+++void
+++rwlock_release_write(struct rwlock *rw_lock){
+++
+++	rw_lock->rwlock_semaphore->sem_count=MAX_READ-1;
+++	V(rw_lock->rwlock_semaphore);
+++
+++
+++}
+++
+++
++diff --git a/kern/thread/thread.c b/kern/thread/thread.c
++index e7235e3..d24b03a 100644
++--- a/kern/thread/thread.c
+++++ b/kern/thread/thread.c
++@@ -48,6 +48,15 @@
++ #include <mainbus.h>
++ #include <vnode.h>
++ 
+++
+++/*
+++ * Author: Pratham Malik
+++ * Added header file for process syscalls
+++ */
+++#include <psyscall.h>
+++#include <limits.h>
+++//End of adding by Pratham Malik
+++
++ #include "opt-synchprobs.h"
++ #include "opt-defaultscheduler.h"
++ 
++@@ -118,6 +127,8 @@ struct thread *
++ thread_create(const char *name)
++ {
++ 	struct thread *thread;
+++//Added by Pratham Malik
+++	pid_t processid;
++ 
++ 	DEBUGASSERT(name != NULL);
++ 
++@@ -154,6 +165,18 @@ thread_create(c
 \ No newline at end of file
 diff --git a/user/lib/libc/stdlib/malloc.c b/user/lib/libc/stdlib/malloc.c
 index ad0c91c..b440d5b 100644
