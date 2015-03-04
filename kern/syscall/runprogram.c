@@ -44,8 +44,9 @@
 #include <vfs.h>
 #include <syscall.h>
 #include <test.h>
-
+#include <file_syscall.h>
 /*
+ *
  * Load program "progname" and start running it in usermode.
  * Does not return except on error.
  *
@@ -74,6 +75,7 @@ runprogram(char *progname)
 		return ENOMEM;
 	}
 
+
 	/* Activate it. */
 	as_activate(curthread->t_addrspace);
 
@@ -99,8 +101,23 @@ runprogram(char *progname)
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
 			  stackptr, entrypoint);
 	
+	/*
+		 * Added By Mohit
+		 *
+		 * Started for file table initialization
+		 */
+		result= intialize_file_desc_tbl(curthread->file_table);
+		if(result){
+			return result;
+		}
+		/*
+		 * Ended
+		 */
+
 	/* enter_new_process does not return. */
 	panic("enter_new_process returned\n");
 	return EINVAL;
 }
+
+
 

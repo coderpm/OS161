@@ -38,6 +38,7 @@
 
 #include <spinlock.h>
 #include <threadlist.h>
+#include <file_syscall.h>
 #include <limits.h>
 
 struct addrspace;
@@ -116,8 +117,11 @@ struct thread {
 	struct vnode *t_cwd;		/* current working directory */
 
 	/* add more here as needed */
-
-	struct file_descriptor file_table[__OPEN_MAX];
+	/*Added By Mohit
+	 * started
+	 */
+	struct file_descriptor *file_table[__OPEN_MAX];
+	/* Ended */
 };
 
 /* Call once during system startup to allocate data structures. */

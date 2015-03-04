@@ -47,6 +47,10 @@
 #include <addrspace.h>
 #include <mainbus.h>
 #include <vnode.h>
+/* Added for file table size*/
+
+
+
 
 #include "opt-synchprobs.h"
 #include "opt-defaultscheduler.h"
@@ -154,7 +158,10 @@ thread_create(const char *name)
 
 	/* If you add to struct thread, be sure to initialize here */
 
-	thread->file_table= 0;
+	/*Added BY Mohit
+	 *started
+	 */
+	/*Ended*/
 
 	return thread;
 }
