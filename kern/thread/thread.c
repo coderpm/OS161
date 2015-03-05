@@ -49,6 +49,13 @@
 #include <vnode.h>
 /* Added for file table size*/
 
+/**
+ * Author: Pratham Malik
+ */
+#include <psyscall.h>
+struct process_control *process_array[PROCESS_MAX];
+
+//End of Additions by PM
 
 
 
@@ -176,9 +183,9 @@ thread_create(const char *name)
 
 	/**
 	 * Author: Pratham Malik
-	 * Call allocate function for allocating a pid to the thread
+	 * Initialize PID to the process
 	 */
-//	allocate_pid(&thread->t_pid);
+	allocate_pid(thread);
 
 	for(int i=PID_MIN;i<PROCESS_MAX;i++)
 	{
@@ -416,30 +423,20 @@ thread_bootstrap(void)
 	struct cpu *bootcpu;
 	struct thread *bootthread;
 
-	/*
-	* Author:Pratham Malik
-	* Initializing the global variable - process_array
-	*/
-	// Call function to initialize the pidlock
 
 
 	cpuarray_init(&allcpus);
-	//create_pidlock();
+
 	/*
-		* Author:Pratham Malik
-		* Initializing the global variable - process_array
-		*/
-		// Call function to initialize the pidlock
-
-
-
-		//Initialize the process variables to 0
-		for(int count=0;count<PROCESS_MAX;count++)
-		{
-			process_array[count]=0;
-		}
-
-		//End of Addition by Pratham Malik
+	 * Author:Pratham Malik
+	 * Initialize the structure for process to zero
+	*/
+	int count=0;
+	for(count=0;count<PROCESS_MAX;count++)
+	{
+		process_array[count]=0;
+	}
+	//End of Addition by PM
 
 
 	/*

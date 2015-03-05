@@ -1,4 +1,3 @@
-
 #include <types.h>
 #include <clock.h>
 #include <copyinout.h>
@@ -7,10 +6,38 @@
 #include <limits.h>
 #include <current.h>
 #include <synch.h>
-//#include <psyscall.h>
+#include <psyscall.h>
 
-struct process_control *process_array[PROCESS_MAX];
-struct lock *pid_lock;
+
+void
+allocate_pid(struct thread *thr)
+{
+	for(int i=PID_MIN;i<PROCESS_MAX;i++)
+	{
+		if(process_array[i]==0)
+		{
+			struct process_control *p_array;
+
+			p_array=kmalloc(sizeof(p_array));
+
+			thr->t_pid=i;
+
+			p_array->parent_id=-1;
+			p_array->childlist=NULL;
+			p_array->exit_code=-1;
+			p_array->exit_status=false;
+			p_array->exit_semaphore = NULL;
+			p_array->mythread=thr;
+
+			//Copy back into the thread
+			process_array[i]=p_array;
+			break;
+		}
+	}
+}
+
+
+
 /*
  * Fork System Call:: Forks a new process
  * Returns two values to child and Parent.
@@ -25,49 +52,14 @@ sys___fork(pid_t  *returnval, struct trapframe *tf)
 
 	return returnval;
 }
-*/
-/**
+
+*
  * Function for allocation pid from global array of
  * process id
  * 1 : Signifies that index location is taken
  * Never initialize the array index at 1
- */
 
-void
-allocate_pid(int *pid)
-{
-//Take lock before allocating the pid
-	//lock_acquire(pid_lock);
 
-	for(int i=PID_MIN;i<PROCESS_MAX;i++)
-	{
-		if(process_array[i]==0)
-		{
-			struct process_control *p_array;
-
-			p_array=kmalloc(sizeof(p_array));
-
-			*pid=i;
-
-			p_array->parent_id=-1;
-			p_array->childlist=NULL;
-			p_array->exit_code=-1;
-			p_array->mythread=curthread;
-			p_array->exit_status=false;
-
-			//create a semaphore for the exit status
-			char *name = (char *)i;
-			p_array->exit_semaphore = sem_create(name,0);
-
-			//Copy back into the thread
-			process_array[i]=p_array;
-			break;
-		}
-	}
-
-	//lock_release(pid_lock);
-
-}
 
 void
 deallocate_pid(void)
@@ -132,12 +124,12 @@ sys___waitpid(userptr_t processid,int *status,userptr_t options)
 	//Check whether the pid exists in your child list
 	pid_t pid_process= (int32_t) processid;
 
-	/**
+	*
 	while(!(process_array[pid_process]->exit_status))
 	{
 //		P(process_array[pid_process]->exit_semaphore);
 	}
-*/
+
 	*status = (intptr_t) process_array[pid_process]->exit_code;
 
 	//Destroy Child's Process Structure
@@ -152,12 +144,13 @@ sys___waitpid(userptr_t processid,int *status,userptr_t options)
 
 
 
-/**
+*
  * Create lock for the pid allocation
-*/
+
 
 void
 create_pidlock(void)
 {
 	pid_lock = lock_create("pid_lock");
 }
+*/

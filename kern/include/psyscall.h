@@ -34,6 +34,11 @@ struct process_control
 
 };
 
+/* Function to allocate pid to the thread and initialize the contents of Process structure*/
+void
+allocate_pid(struct thread *);
+
+
 struct child_process{
 
 	pid_t child_pid;
@@ -49,8 +54,6 @@ sys___exit(userptr_t user_seconds_ptr);
 int
 sys___waitpid(userptr_t processid,int *status,userptr_t options);
 
-void
-allocate_pid(int *pid);
 
 void
 deallocate_pid(void);
