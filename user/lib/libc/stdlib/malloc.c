@@ -153,7 +153,7 @@ __malloc_init(void)
 	 * Check various assumed properties of the sizes.
 	 */
 	if (sizeof(struct mheader) != MBLOCKSIZE) {
-ss		errx(1, "malloc: Internal error - MBLOCKSIZE wrong");
+		errx(1, "malloc: Internal error - MBLOCKSIZE wrong");
 	}
 	if ((MBLOCKSIZE & (MBLOCKSIZE-1))!=0) {
 		errx(1, "malloc: Internal error - MBLOCKSIZE not power of 2");

@@ -96,7 +96,13 @@ runprogram(char *progname)
 		/* thread_exit destroys curthread->t_addrspace */
 		return result;
 	}
-
+	int result1=100;
+	kprintf("Inside run program");
+	result1= intialize_file_desc_tbl(curthread->file_table);
+	if( intialize_file_desc_tbl(curthread->file_table)){
+		kprintf("Error");
+		return result1;
+	}
 	/* Warp to user mode. */
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
 			  stackptr, entrypoint);
@@ -106,10 +112,7 @@ runprogram(char *progname)
 		 *
 		 * Started for file table initialization
 		 */
-		result= intialize_file_desc_tbl(curthread->file_table);
-		if(result){
-			return result;
-		}
+
 		/*
 		 * Ended
 		 */
