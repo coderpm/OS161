@@ -40,11 +40,18 @@
 #include <threadlist.h>
 #include <file_syscall.h>
 #include <limits.h>
+/**
+ * Author: Pratham Malik
+ * included psyscalls.h and declared the process structure
+ */
+#include <psyscall.h>
+
+struct process_control;
+//End of Additions by Pratham Malik
 
 struct addrspace;
 struct cpu;
 struct vnode;
-struct file_descriptor;
 
 /* get machine-dependent defs */
 #include <machine/thread.h>
@@ -117,11 +124,20 @@ struct thread {
 	struct vnode *t_cwd;		/* current working directory */
 
 	/* add more here as needed */
+
 	/*Added By Mohit
 	 * started
 	 */
 	struct file_descriptor *file_table[__OPEN_MAX];
 	/* Ended */
+
+
+	/*
+	 * Author: Pratham Malik
+	 * Added Process id variable for every thread
+	 */
+		pid_t t_pid;
+
 };
 
 /* Call once during system startup to allocate data structures. */

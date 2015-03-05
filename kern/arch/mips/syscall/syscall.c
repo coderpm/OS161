@@ -35,6 +35,7 @@
 #include <thread.h>
 #include <current.h>
 #include <syscall.h>
+#include <file_syscall.h>
 
 
 /*
@@ -123,20 +124,43 @@ syscall(struct trapframe *tf)
 	    			tf->tf_a2, &retval);
 	    break;
 	    case SYS_write:
-	    	    err= sys_write(tf->tf_a0, (userptr_t)tf->tf_a1,
-	    	  			tf->tf_a2, &retval);
+	    err= sys_write(tf->tf_a0, (userptr_t)tf->tf_a1,
+	    		tf->tf_a2, &retval);
 	    break;
+
 	    case SYS_dup2:
-	      	    err= dup2(tf->tf_a0,tf->tf_a1, &retval);
+	    err= dup2(tf->tf_a0,tf->tf_a1, &retval);
 	    break;
 
 	    case SYS___getcwd:
-	    	err= __getcwd((userptr_t)tf->tf_a0,
-	    			tf->tf_a1, &retval);
+	    err= __getcwd((userptr_t)tf->tf_a0,
+	    		tf->tf_a1, &retval);
 	    break;
+
+	    /*case SYS_lseek:
+	    	off_t lseek_variable= tf->tf_a3 + tf->tf_a2;
+	    	err= lseek();
+	    break;*/
 
 	    /* Add stuff
 	     *  here */
+ 
+
+	    /* Add stuff here */
+	    case SYS_getpid:
+		err = sys___getpid(&retval);
+		break;
+
+	    case SYS__exit:
+	    err = sys___exit((userptr_t)tf->tf_a0);
+	    break;
+
+	    case SYS_waitpid:
+	    err = sys___waitpid((userptr_t)tf->tf_a0,
+	    		(int *) tf->tf_a1,(userptr_t)tf->tf_a2);
+	    break;
+
+
 	    default:
 		kprintf("Unknown syscall %d\n", callno);
 		err = ENOSYS;

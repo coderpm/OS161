@@ -1,0 +1,326 @@
+Script started on Thu 12 Feb 2015 10:11:02 PM EST
+]0;trinity@zion: ~/srctrinity@zion:~/src$ git status
+# On branch master
+# Your branch is ahead of 'origin/master' by 5 commits.
+#
+# Changes not staged for commit:
+#   (use "git add <file>..." to update what will be committed)
+#   (use "git checkout -- <file>..." to discard changes in working directory)
+#
+#	modified:   kern/startup/main.c
+#
+# Untracked files:
+#   (use "git add <file>..." to include in what will be committed)
+#
+#	typescript
+no changes added to commit (use "git add" and/or "git commit -a")
+]0;trinity@zion: ~/srctrinity@zion:~/src$ git diff
+[?1h=diff --git a/kern/startup/main.c b/kern/startup/main.c[m
+index 93635ee..3526bd6 100644[m
+--- a/kern/startup/main.c[m
++++ b/kern/startup/main.c[m
+@@ -30,7 +30,7 @@[m
+ /*[m
+  * Main.[m
+  */[m
+-[m
++// "Adding for git" marora3@buffalo.edu[m
+ [m
+ #include <types.h>[m
+ #include <kern/errno.h>[m
+[K[?1l>]0;trinity@zion: ~/srctrinity@zion:~/src$ git add .[Kkern/s
+startup/    synchprobs/ syscall/    
+]0;trinity@zion: ~/srctrinity@zion:~/src$ git add kern/startup/main.c
+]0;trinity@zion: ~/srctrinity@zion:~/src$ git commit -a -m "Added Commet[Knt [K"
+[master b7e0a0e] Added Comment
+ Committer: ops-class.org Student <trinity@zion.(none)>
+Your name and email address were configured automatically based
+on your username and hostname. Please check that they are accurate.
+You can suppress this message by setting them explicitly:
+
+    git config --global user.name "Your Name"
+    git config --global user.email you@example.com
+
+After doing this, you may fix the identity used for this commit with:
+
+    git commit --amend --reset-author
+
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+]0;trinity@zion: ~/srctrinity@zion:~/src$ git status
+# On branch master
+# Your branch is ahead of 'origin/master' by 6 commits.
+#
+# Untracked files:
+#   (use "git add <file>..." to include in what will be committed)
+#
+#	typescript
+nothing added to commit but untracked files present (use "git add" to track)
+]0;trinity@zion: ~/srctrinity@zion:~/src$ cd kern/compile/As[KSST1
+]0;trinity@zion: ~/src/kern/compile/ASST1trinity@zion:~/src/kern/compile/ASST1$ bmake depend
+bmake includelinks
+`includelinks' is up to date.
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -M ../../../common/libc/printf/__printf.c ../../../common/libc/printf/snprintf.c ../../../common/libc/stdlib/atoi.c ../../../common/libc/string/bzero.c ../../../common/libc/string/memcpy.c ../../../common/libc/string/memmove.c ../../../common/libc/string/strcat.c ../../../common/libc/string/strchr.c ../../../common/libc/string/strcmp.c ../../../common/libc/string/strcpy.c ../../../common/libc/string/strlen.c ../../../common/libc/string/strrchr.c ../../../common/libc/string/strtok_r.c ../../compile/ASST1/autoconf.c ../../dev/generic/beep.c ../../dev/generic/console.c ../../dev/generic/random.c ../../dev/generic/rtclock.c ../../dev/lamebus/beep_ltimer.c ../../dev/lamebus/con_lser.c ../../dev/lamebus/emu_att.c ../../dev/lamebus/emu.c ../../dev/lamebus/lamebus.c ../../dev/lamebus/lhd_att.c ../../dev/lamebus/lhd.c ../../dev/lamebus/lrandom_att.c ../../dev/lamebus/lrandom.c ../../dev/lamebus/lser_att.c ../../dev/lamebus/lser.c ../../dev/lamebus/ltimer_att.c ../../dev/lamebus/ltimer.c ../../dev/lamebus/ltrace_att.c ../../dev/lamebus/ltrace.c ../../dev/lamebus/random_lrandom.c ../../dev/lamebus/rtclock_ltimer.c ../../fs/sfs/sfs_fs.c ../../fs/sfs/sfs_io.c ../../fs/sfs/sfs_vnode.c ../../lib/array.c ../../lib/bitmap.c ../../lib/bswap.c ../../lib/kgets.c ../../lib/kprintf.c ../../lib/misc.c ../../lib/uio.c ../../startup/main.c ../../startup/menu.c ../../synchprobs/drivers.c ../../synchprobs/problems.c ../../syscall/loadelf.c ../../syscall/runprogram.c ../../syscall/time_syscalls.c ../../test/arraytest.c ../../test/bitmaptest.c ../../test/fstest.c ../../test/malloctest.c ../../test/synchtest.c ../../test/threadtest.c ../../test/tt3.c ../../thread/clock.c ../../thread/spinlock.c ../../thread/spl.c ../../thread/synch.c ../../thread/thread.c ../../thread/threadlist.c ../../vfs/device.c ../../vfs/devnull.c ../../vfs/vfscwd.c ../../vfs/vfslist.c ../../vfs/vfslookup.c ../../vfs/vfspath.c ../../vfs/vnode.c ../../vm/kmalloc.c ../../arch/mips/locore/trap.c ../../arch/mips/syscall/syscall.c ../../arch/mips/thread/cpu.c ../../arch/mips/thread/switchframe.c ../../arch/mips/thread/switch.S ../../arch/mips/thread/thread_machdep.c ../../arch/mips/thread/threadstart.S ../../arch/mips/vm/dumbvm.c ../../arch/mips/vm/ram.c ../../../common/gcc-millicode/adddi3.c ../../../common/gcc-millicode/anddi3.c ../../../common/gcc-millicode/ashldi3.c ../../../common/gcc-millicode/ashrdi3.c ../../../common/gcc-millicode/cmpdi2.c ../../../common/gcc-millicode/divdi3.c ../../../common/gcc-millicode/iordi3.c ../../../common/gcc-millicode/lshldi3.c ../../../common/gcc-millicode/lshrdi3.c ../../../common/gcc-millicode/moddi3.c ../../../common/gcc-millicode/muldi3.c ../../../common/gcc-millicode/negdi2.c ../../../common/gcc-millicode/notdi2.c ../../../common/gcc-millicode/qdivrem.c ../../../common/gcc-millicode/subdi3.c ../../../common/gcc-millicode/ucmpdi2.c ../../../common/gcc-millicode/udivdi3.c ../../../common/gcc-millicode/umoddi3.c ../../../common/gcc-millicode/xordi3.c ../../../common/libc/arch/mips/setjmp.S ../../vm/copyinout.c ../../arch/mips/locore/cache-mips161.S ../../arch/mips/locore/exception-mips1.S ../../arch/mips/vm/tlb-mips1.S ../../arch/sys161/dev/lamebus_machdep.c ../../arch/sys161/startup/start.S > .depend
+]0;trinity@zion: ~/src/kern/compile/ASST1trinity@zion:~/src/kern/compile/ASST1$ bmake
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../startup/main.c
+../../startup/main.c:2: error: expected declaration specifiers or '...' before string constant
+../../startup/main.c:2: error: expected declaration specifiers or '...' before 'harvard_copyright'
+cc1: warnings being treated as errors
+../../startup/main.c:2: warning: data definition has no type or storage class
+../../startup/main.c:2: warning: type defaults to 'int' in declaration of 'kprintf'
+../../startup/main.c:3: error: expected declaration specifiers or '...' before string constant
+../../startup/main.c:3: warning: data definition has no type or storage class
+../../startup/main.c:3: warning: type defaults to 'int' in declaration of 'kprintf'
+../../startup/main.c:5: error: expected declaration specifiers or '...' before string constant
+../../startup/main.c:6: error: expected declaration specifiers or '...' before 'GROUP_VERSION'
+../../startup/main.c:6: error: expected declaration specifiers or '...' before 'buildconfig'
+../../startup/main.c:6: error: expected declaration specifiers or '...' before 'buildversion'
+../../startup/main.c:6: warning: data definition has no type or storage class
+../../startup/main.c:6: warning: type defaults to 'int' in declaration of 'kprintf'
+../../startup/main.c:7: error: expected declaration specifiers or '...' before string constant
+../../startup/main.c:7: warning: data definition has no type or storage class
+../../startup/main.c:7: warning: type defaults to 'int' in declaration of 'kprintf'
+../../startup/main.c:10: warning: data definition has no type or storage class
+../../startup/main.c:10: warning: type defaults to 'int' in declaration of 'ram_bootstrap'
+../../startup/main.c:11: warning: data definition has no type or storage class
+../../startup/main.c:11: warning: type defaults to 'int' in declaration of 'thread_bootstrap'
+../../startup/main.c:12: warning: data definition has no type or storage class
+../../startup/main.c:12: warning: type defaults to 'int' in declaration of 'hardclock_bootstrap'
+../../startup/main.c:13: warning: data definition has no type or storage class
+../../startup/main.c:13: warning: type defaults to 'int' in declaration of 'vfs_bootstrap'
+../../startup/main.c:16: error: expected declaration specifiers or '...' before string constant
+../../startup/main.c:16: warning: data definition has no type or storage class
+../../startup/main.c:16: warning: type defaults to 'int' in declaration of 'kprintf'
+../../startup/main.c:17: error: expected ')' before '->' token
+../../startup/main.c:18: warning: data definition has no type or storage class
+../../startup/main.c:18: warning: type defaults to 'int' in declaration of 'mainbus_bootstrap'
+../../startup/main.c:19: error: expected ')' before '->' token
+../../startup/main.c:21: warning: data definition has no type or storage class
+../../startup/main.c:21: warning: type defaults to 'int' in declaration of 'pseudoconfig'
+../../startup/main.c:22: error: expected declaration specifiers or '...' before string constant
+../../startup/main.c:22: warning: data definition has no type or storage class
+../../startup/main.c:22: warning: type defaults to 'int' in declaration of 'kprintf'
+../../startup/main.c:25: warning: data definition has no type or storage class
+../../startup/main.c:25: warning: type defaults to 'int' in declaration of 'vm_bootstrap'
+../../startup/main.c:26: warning: data definition has no type or storage class
+../../startup/main.c:26: warning: type defaults to 'int' in declaration of 'kprintf_bootstrap'
+../../startup/main.c:27: warning: data definition has no type or storage class
+../../startup/main.c:27: warning: type defaults to 'int' in declaration of 'thread_start_cpus'
+../../startup/main.c:30: error: expected declaration specifiers or '...' before string constant
+../../startup/main.c:30: warning: data definition has no type or storage class
+../../startup/main.c:30: warning: type defaults to 'int' in declaration of 'vfs_setbootfs'
+../../startup/main.c:36: error: expected declaration specifiers or '...' before 'sizeof'
+../../startup/main.c:36: warning: data definition has no type or storage class
+../../startup/main.c:36: warning: type defaults to 'int' in declaration of 'COMPILE_ASSERT'
+../../startup/main.c:37: error: expected declaration specifiers or '...' before 'sizeof'
+../../startup/main.c:37: warning: data definition has no type or storage class
+../../startup/main.c:37: warning: type defaults to 'int' in declaration of 'COMPILE_ASSERT'
+../../startup/main.c:38: error: expected identifier or '(' before '}' token
+../../startup/main.c: In function 'shutdown':
+../../startup/main.c:50: warning: implicit declaration of function 'vfs_clearbootfs'
+../../startup/main.c:51: warning: implicit declaration of function 'vfs_clearcurdir'
+../../startup/main.c:52: warning: implicit declaration of function 'vfs_unmountall'
+../../startup/main.c:54: warning: implicit declaration of function 'thread_shutdown'
+../../startup/main.c:56: warning: implicit declaration of function 'splhigh'
+../../startup/main.c: At top level:
+../../startup/main.c:70: warning: no previous prototype for 'sys_reboot'
+../../startup/main.c: In function 'sys_reboot':
+../../startup/main.c:72: error: 'RB_REBOOT' undeclared (first use in this function)
+../../startup/main.c:72: error: (Each undeclared identifier is reported only once
+../../startup/main.c:72: error: for each function it appears in.)
+../../startup/main.c:73: error: 'RB_HALT' undeclared (first use in this function)
+../../startup/main.c:74: error: 'RB_POWEROFF' undeclared (first use in this function)
+../../startup/main.c:77: error: 'EINVAL' undeclared (first use in this function)
+../../startup/main.c:85: warning: implicit declaration of function 'mainbus_halt'
+../../startup/main.c:89: warning: implicit declaration of function 'mainbus_reboot'
+../../startup/main.c:93: warning: implicit declaration of function 'mainbus_poweroff'
+../../startup/main.c:97: warning: implicit declaration of function 'panic'
+../../startup/main.c: At top level:
+../../startup/main.c:107: warning: no previous prototype for 'kmain'
+../../startup/main.c: In function 'kmain':
+../../startup/main.c:108: warning: implicit declaration of function 'boot'
+../../startup/main.c:110: warning: implicit declaration of function 'menu'
+*** Error code 1
+
+Stop.
+bmake: stopped in /home/trinity/src/kern/compile/ASST1
+]0;trinity@zion: ~/src/kern/compile/ASST1trinity@zion:~/src/kern/compile/ASST1$ cd
+]0;trinity@zion: ~trinity@zion:~$ cd src
+]0;trinity@zion: ~/srctrinity@zion:~/src$ git log
+[?1h=commit b7e0a0eab5642bfccad4729662009acf187bd2ad[m
+Author: ops-class.org Student <trinity@zion.(none)>[m
+Date:   Thu Feb 12 22:12:06 2015 -0500[m
+[m
+    Added Comment[m
+[m
+commit e5e511cc34501a99d73ccfbd10c192dfcea10fa8[m
+Author: ops-class.org Student <trinity@zion.(none)>[m
+Date:   Thu Feb 12 22:10:43 2015 -0500[m
+[m
+    Just like that[m
+[m
+commit c086f964f999c8a8f61eba95a3f36682eb90567d[m
+Author: ops-class.org Student <trinity@zion.(none)>[m
+Date:   Thu Feb 12 21:59:18 2015 -0500[m
+[m
+    Removed Comment[m
+[m
+commit 164bc96c376698e37e40e96321f25ae78f2c725d[m
+Author: ops-class.org Student <trinity@zion.(none)>[m
+Date:   Thu Feb 12 21:53:58 2015 -0500[m
+[m
+    Added Comment for GIT[m
+:[K[K[?1l>]0;trinity@zion: ~/srctrinity@zion:~/src$ git revert b7e0a0eab
+error: Your local changes to the following files would be overwritten by merge:
+	kern/startup/main.c
+Please, commit your changes or stash them before you can merge.
+Aborting
+]0;trinity@zion: ~/srctrinity@zion:~/src$ gir[Kt reset --hard b7e0a0eab
+HEAD is now at b7e0a0e Added Comment
+]0;trinity@zion: ~/srctrinity@zion:~/src$ cd kern/compile/Ass[K[Ks[KSST0
+]0;trinity@zion: ~/src/kern/compile/ASST0trinity@zion:~/src/kern/compile/ASST0$ bmnake[K[K[K[Kake depend
+bmake includelinks
+`includelinks' is up to date.
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -M ../../../common/libc/printf/__printf.c ../../../common/libc/printf/snprintf.c ../../../common/libc/stdlib/atoi.c ../../../common/libc/string/bzero.c ../../../common/libc/string/memcpy.c ../../../common/libc/string/memmove.c ../../../common/libc/string/strcat.c ../../../common/libc/string/strchr.c ../../../common/libc/string/strcmp.c ../../../common/libc/string/strcpy.c ../../../common/libc/string/strlen.c ../../../common/libc/string/strrchr.c ../../../common/libc/string/strtok_r.c ../../compile/ASST0/autoconf.c ../../dev/generic/beep.c ../../dev/generic/console.c ../../dev/generic/random.c ../../dev/generic/rtclock.c ../../dev/lamebus/beep_ltimer.c ../../dev/lamebus/con_lser.c ../../dev/lamebus/emu_att.c ../../dev/lamebus/emu.c ../../dev/lamebus/lamebus.c ../../dev/lamebus/lhd_att.c ../../dev/lamebus/lhd.c ../../dev/lamebus/lrandom_att.c ../../dev/lamebus/lrandom.c ../../dev/lamebus/lser_att.c ../../dev/lamebus/lser.c ../../dev/lamebus/ltimer_att.c ../../dev/lamebus/ltimer.c ../../dev/lamebus/ltrace_att.c ../../dev/lamebus/ltrace.c ../../dev/lamebus/random_lrandom.c ../../dev/lamebus/rtclock_ltimer.c ../../fs/sfs/sfs_fs.c ../../fs/sfs/sfs_io.c ../../fs/sfs/sfs_vnode.c ../../lib/array.c ../../lib/bitmap.c ../../lib/bswap.c ../../lib/kgets.c ../../lib/kprintf.c ../../lib/misc.c ../../lib/uio.c ../../startup/main.c ../../startup/menu.c ../../syscall/loadelf.c ../../syscall/runprogram.c ../../syscall/time_syscalls.c ../../test/arraytest.c ../../test/bitmaptest.c ../../test/fstest.c ../../test/malloctest.c ../../test/synchtest.c ../../test/threadtest.c ../../test/tt3.c ../../thread/clock.c ../../thread/spinlock.c ../../thread/spl.c ../../thread/synch.c ../../thread/thread.c ../../thread/threadlist.c ../../vfs/device.c ../../vfs/devnull.c ../../vfs/vfscwd.c ../../vfs/vfslist.c ../../vfs/vfslookup.c ../../vfs/vfspath.c ../../vfs/vnode.c ../../vm/kmalloc.c ../../arch/mips/locore/trap.c ../../arch/mips/syscall/syscall.c ../../arch/mips/thread/cpu.c ../../arch/mips/thread/switchframe.c ../../arch/mips/thread/switch.S ../../arch/mips/thread/thread_machdep.c ../../arch/mips/thread/threadstart.S ../../arch/mips/vm/dumbvm.c ../../arch/mips/vm/ram.c ../../../common/gcc-millicode/adddi3.c ../../../common/gcc-millicode/anddi3.c ../../../common/gcc-millicode/ashldi3.c ../../../common/gcc-millicode/ashrdi3.c ../../../common/gcc-millicode/cmpdi2.c ../../../common/gcc-millicode/divdi3.c ../../../common/gcc-millicode/iordi3.c ../../../common/gcc-millicode/lshldi3.c ../../../common/gcc-millicode/lshrdi3.c ../../../common/gcc-millicode/moddi3.c ../../../common/gcc-millicode/muldi3.c ../../../common/gcc-millicode/negdi2.c ../../../common/gcc-millicode/notdi2.c ../../../common/gcc-millicode/qdivrem.c ../../../common/gcc-millicode/subdi3.c ../../../common/gcc-millicode/ucmpdi2.c ../../../common/gcc-millicode/udivdi3.c ../../../common/gcc-millicode/umoddi3.c ../../../common/gcc-millicode/xordi3.c ../../../common/libc/arch/mips/setjmp.S ../../vm/copyinout.c ../../arch/mips/locore/cache-mips161.S ../../arch/mips/locore/exception-mips1.S ../../arch/mips/vm/tlb-mips1.S ../../arch/sys161/dev/lamebus_machdep.c ../../arch/sys161/startup/start.S > .depend
+]0;trinity@zion: ~/src/kern/compile/ASST0trinity@zion:~/src/kern/compile/ASST0$ bmake
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../startup/main.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../test/fstest.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../test/malloctest.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../test/synchtest.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../test/threadtest.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../test/tt3.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../thread/clock.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../thread/spinlock.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../thread/spl.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../thread/synch.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../thread/thread.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../vfs/device.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../vfs/vfslist.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../vfs/vfslookup.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../vfs/vnode.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../arch/mips/locore/trap.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../arch/mips/thread/cpu.c
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c ../../arch/sys161/dev/lamebus_machdep.c
+../../conf/newvers.sh ASST0
+*** This is ASST0 build #9 ***
+mips-harvard-os161-gcc -g -Wall -W -Wwrite-strings -Wmissing-prototypes -Werror -std=gnu99 -mno-abicalls -fno-pic -ffixed-23 -nostdinc -I../../include -I../../dev -I. -Iincludelinks -ffreestanding -D_KERNEL -c vers.c
+mips-harvard-os161-ld   -nostdlib -T ../../arch/mips/conf/ldscript __printf.o snprintf.o atoi.o bzero.o memcpy.o memmove.o strcat.o strchr.o strcmp.o strcpy.o strlen.o strrchr.o strtok_r.o autoconf.o beep.o console.o random.o rtclock.o beep_ltimer.o con_lser.o emu_att.o emu.o lamebus.o lhd_att.o lhd.o lrandom_att.o lrandom.o lser_att.o lser.o ltimer_att.o ltimer.o ltrace_att.o ltrace.o random_lrandom.o rtclock_ltimer.o sfs_fs.o sfs_io.o sfs_vnode.o array.o bitmap.o bswap.o kgets.o kprintf.o misc.o uio.o main.o menu.o loadelf.o runprogram.o time_syscalls.o arraytest.o bitmaptest.o fstest.o malloctest.o synchtest.o threadtest.o tt3.o clock.o spinlock.o spl.o synch.o thread.o threadlist.o device.o devnull.o vfscwd.o vfslist.o vfslookup.o vfspath.o vnode.o kmalloc.o trap.o syscall.o cpu.o switchframe.o switch.o thread_machdep.o threadstart.o dumbvm.o ram.o adddi3.o anddi3.o ashldi3.o ashrdi3.o cmpdi2.o divdi3.o iordi3.o lshldi3.o lshrdi3.o moddi3.o muldi3.o negdi2.o notdi2.o qdivrem.o subdi3.o ucmpdi2.o udivdi3.o umoddi3.o xordi3.o setjmp.o copyinout.o cache-mips161.o exception-mips1.o tlb-mips1.o lamebus_machdep.o start.o vers.o -o kernel
+mips-harvard-os161-size kernel
+   text	   data	    bss	    dec	    hex	filename
+ 184984	    448	   7788	 193220	  2f2c4	kernel
+]0;trinity@zion: ~/src/kern/compile/ASST0trinity@zion:~/src/kern/compile/ASST0$ cd
+]0;trinity@zion: ~trinity@zion:~$ cd src
+]0;trinity@zion: ~/srctrinity@zion:~/src$ git diff
+[?1h=diff --git a/kern/thread/synch.c b/kern/thread/synch.c[m
+index cb76b9a..0651f16 100644[m
+--- a/kern/thread/synch.c[m
++++ b/kern/thread/synch.c[m
+@@ -150,6 +150,9 @@ V(struct semaphore *sem)[m
+ struct lock *[m
+ lock_create(const char *name)[m
+ {[m
++[m
++       DEBUG(DB_THREADS,[m
++                                                             "Inside Lock_creat[m
+         struct lock *lock;[m
+ [m
+         lock = kmalloc(sizeof(struct lock));[m
+@@ -173,6 +176,9 @@ lock_create(const char *name)[m
+         spinlock_init(&lock->lk_spinlock);[m
+         lock->lock_hold=0;[m
+         lock->lk_thread= NULL;[m
++[m
++        DEBUG(DB_THREADS,[m
++                                       "Exiting lock_create");[m
+         return lock;[m
+ }[m
+:[K[K [m
+:[K[K@@ -192,6 +198,8 @@ void[m
+:[K[K lock_acquire(struct lock *lock)[m
+:[K[K {[m
+:[K[K         // Write this[m
+:[K[K+       DEBUG(DB_THREADS,[m
+:[K[K+                                               "Inside lock_acquire");[m
+:[K[K        struct thread *mythread;[m
+:[K[K        KASSERT(lock != NULL);[m
+:[K[K     KASSERT(curthread->t_in_interrupt == false);[m
+:[K[K@@ -226,6 +234,8 @@ lock_acquire(struct lock *lock)[m
+:[K[K          //KASSERT(lock->lock_count > 0);[m
+:[K[K [m
+:[K[K        //(void)lock;  // suppress warning until code gets written[m
+:[K[K+       DEBUG(DB_THREADS,[m
+:[K[K+                                               "Exiting lock_acquire");[m
+:[K[K }[m
+:[K[K [m
+:[K[K void[m
+:[K[Kdiff --git a/kern/thread/thread.c b/kern/thread/thread.c[m
+:[K[Kindex e7235e3..bd6cbbb 100644[m
+:[K[K--- a/kern/thread/thread.c[m
+:[K[K+++ b/kern/thread/thread.c[m
+:[K[K@@ -168,6 +168,8 @@ thread_create(const char *name)[m
+:[K[K struct cpu *[m
+:[K[K cpu_create(unsigned hardware_number)[m
+:[K[K {[m
+:[K[K+       DEBUG(DB_THREADS,[m
+:[K[K+                                             "Inside cpu_create");[m
+:[K[K        struct cpu *c;[m
+:[K[K        int result;[m
+:[K[K        char namebuf[16];[m
+:[K[K@@ -223,6 +225,9 @@ cpu_create(unsigned hardware_number)[m
+:[K[K [m
+:[K[K        cpu_machdep_init(c);[m
+:[K[K [m
+:[K[K+       DEBUG(DB_THREADS,[m
+:[K[K+                                             "Leaving cpu_create");[m
+:[K[K+[m
+:[K[K        return c;[m
+:[K[K }[m
+:[K[K [m
+:[K[K@@ -293,6 +298,8 @@ exorcise(void)[m
+:[K[K void[m
+:[K[K thread_panic(void)[m
+:[K[K {[m
+:[K[K+       DEBUG(DB_THREADS,[m
+:[K[K+                                             "Inside thread_panic");[m
+:[K[K        /*[m
+:[K[K         * Kill off other CPUs.[m
+:[K[K         *[m
+:[K[K@@ -327,6 +334,8 @@ thread_panic(void)[m
+:[K[K         * might be needed. It may also be necessary to go through and[m
+:[K[K         * forcibly unlock all locks or the like...[m
+:[K[K         */[m
+:[K[K+       DEBUG(DB_THREADS,[m
+:[K[K+                                                     "Exiting thread_panic");[m
+:[K[K }[m
+:[K[K [m
+:[K[K /*[m
+:[K[K@@ -436,6 +445,7 @@ static[m
+:[K[K void[m
+:[K[K thread_make_runnable(struct thread *target, bool already_have_lock)[m
+:[K[K {[m
+:[K[K+[m
+:[K[K        struct cpu *targetcpu;[m
+:[K[K        bool isidle;[m
+:[K[K [m
+:[K[K@@ -1070,7 +1080,8 @@ wchan_wakeone(struct wchan *wc)[m
+:[K[K                /* Nobody was sleeping. */[m
+:[K[K                return;[m
+:[K[K        }[m
+:[K[K-[m
+:[K[K+       DEBUG(DB_THREADS,[m
+:[K[K+                                     "Waking thread UP");[m
+:[K[K        thread_make_runnable(target, false);[m
+:[K[K }[m
+:[K[K [m
+:[K[K@@ -1108,6 +1119,8 @@ wchan_wakeall(struct wchan *wc)[m
+:[K[K                thread_make_runnable(target, false);[m
+:[K[K        }[m
+:[K[K [m
+:[K[K+       DEBUG(DB_THREADS,[m
+:[K[K+                                             "Waking All threads UP");[m
+:[K[K        threadlist_cleanup(&list);[m
+:[K[K }[m
+:[K[K [m
+:[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[K[7m(END)[27m[K[K[?1l>]0;trinity@zion: ~/srctrinity@zion:~/src$ exit
+exit
+
+Script done on Thu 12 Feb 2015 10:29:24 PM EST
