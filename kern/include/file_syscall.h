@@ -32,6 +32,7 @@ int sys_write(int fd, userptr_t buf, size_t nbytes, int *return_value);
 int dup2(int oldfd, int newfd, int *return_value);
 int __getcwd(userptr_t buf, size_t buflen, int *return_value);
 int chdir(userptr_t pathname);
+int lseek(int fd, off_t pos, int whence, int64_t *return_value);
 
 
 

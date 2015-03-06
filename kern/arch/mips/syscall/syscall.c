@@ -81,6 +81,7 @@ syscall(struct trapframe *tf)
 {
 	int callno;
 	int32_t retval;
+	int64_t ret_value;
 	int err;
 
 	KASSERT(curthread != NULL);
@@ -99,7 +100,8 @@ syscall(struct trapframe *tf)
 	 */
 
 	retval = 0;
-
+	ret_value=0;
+	int64_t lseek_variable=0;
 	switch (callno) {
 	    case SYS_reboot:
 		err = sys_reboot(tf->tf_a0);
@@ -141,10 +143,10 @@ syscall(struct trapframe *tf)
 	    	err= chdir((userptr_t)tf->tf_a0);
 	     break;
 
-	    /*case SYS_lseek:
-	    	off_t lseek_variable= tf->tf_a3 + tf->tf_a2;
-	    	err= lseek();
-	    break;*/
+	    case SYS_lseek:
+	    	lseek_variable= (int64_t)tf->tf_a2 << 32 | tf->tf_a3;
+	    	err= lseek(tf->tf_a0, lseek_variable, tf->tf_sp+16, &ret_value);
+	    break;
 
 	    /* Add stuff
 	     *  here */
@@ -183,10 +185,17 @@ syscall(struct trapframe *tf)
 		tf->tf_v0 = err;
 		tf->tf_a3 = 1;      /* signal an error */
 	}
-	else {
+	else if(retval!=0){
 		/* Success. */
 		tf->tf_v0 = retval;
 		tf->tf_a3 = 0;      /* signal no error */
+	}
+	else{
+		int32_t high = (int32_t)((ret_value & 0xFFFFFFFF00000000) >> 32);
+		int32_t low = (int32_t)(ret_value & 0xFFFFFFFF);
+		tf->tf_v0 = high;
+		tf->tf_v1= low;
+		tf->tf_a3= 0;
 	}
 	
 	/*
