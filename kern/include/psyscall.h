@@ -5,6 +5,7 @@
 #include <thread.h>
 #include <limits.h>
 
+
 struct trapframe;
 struct thread;
 
@@ -34,16 +35,19 @@ struct process_control
 	struct cv *process_cv;
 };
 
-/* Function to allocate pid to the thread and initialize the contents of Process structure*/
-void
-allocate_pid(struct thread *);
-
-
 struct child_process{
 
 	pid_t child_pid;
 	struct child_process *next;
 };
+
+/* Function to allocate pid to the thread and initialize the contents of Process structure*/
+
+pid_t
+allocate_pid(void);
+
+void
+initialize_pid(struct thread *thr,pid_t processid);
 
 int
 sys___getpid(int32_t *retval);
@@ -60,5 +64,10 @@ deallocate_pid(pid_t processid);
 int
 sys___fork(struct trapframe *tf,pid_t  *returnval);
 
+void
+enter_process(void *tf,unsigned long addr);
+
+void
+copy_trapframe(struct trapframe *src,struct trapframe *dest);
 
 #endif /* _PSYSCALL_H_ */
