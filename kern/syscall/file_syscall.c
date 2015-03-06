@@ -140,7 +140,7 @@ sys_open(userptr_t filename, int flags, int *return_val)   /*Done using copyinst
 	char *file_name= k_des;
 		for(int i=3; i<__OPEN_MAX;i++){
 			if(curthread->file_table[i]==  0){
-				open_type= flags;
+				open_type= flags & O_ACCMODE;
 				switch(open_type){
 					case O_RDONLY:
 						result= vfs_open(k_des, O_RDONLY, 0, &vn);
