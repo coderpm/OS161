@@ -185,32 +185,16 @@ thread_create(const char *name)
 	 * Author: Pratham Malik
 	 * Initialize PID to the process
 	 */
-	allocate_pid(thread);
-
-	/*for(int i=PID_MIN;i<PROCESS_MAX;i++)
+	pid_t processid;
+	processid = allocate_pid();
+	if(processid==-1)
 	{
-		if(process_array[i]==0)
-		{
-			struct process_control *p_array;
-
-			p_array=kmalloc(sizeof(p_array));
-
-			thread->t_pid=i;
-
-			p_array->parent_id=-1;
-			p_array->childlist=NULL;
-			p_array->exit_code=-1;
-			p_array->exit_status=false;
-			p_array->mythread=thread;
-
-
-			//Copy back into the thread
-			process_array[i]=p_array;
-			break;
-		}
+		kfree(thread);
+		return NULL;
 	}
 
-*/
+	initialize_pid(thread,processid);
+
 	//End of Additions by Pratham Malik
 
 
@@ -584,6 +568,7 @@ thread_fork(const char *name,
 	}
 	thread_checkstack_init(newthread);
 
+
 	/*
 	 * Now we clone various fields from the parent thread.
 	 */
@@ -593,7 +578,7 @@ thread_fork(const char *name,
 
 	/* VM fields */
 	/* do not clone address space -- let caller decide on that */
-
+	newthread->t_addrspace=curthread->t_addrspace;
 	/* VFS fields */
 	if (curthread->t_cwd != NULL) {
 		VOP_INCREF(curthread->t_cwd);
@@ -609,6 +594,9 @@ thread_fork(const char *name,
 
 	/* Set up the switchframe so entrypoint() gets called */
 	switchframe_init(newthread, entrypoint, data1, data2);
+
+
+
 
 	/* Lock the current cpu's run queue and make the new thread runnable */
 	thread_make_runnable(newthread, false);
