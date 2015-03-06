@@ -147,21 +147,23 @@ syscall(struct trapframe *tf)
  
 
 	    /* Add stuff here */
-	    /*
+
 
 	    case SYS_getpid:
 		err = sys___getpid(&retval);
 		break;
 
 	    case SYS__exit:
-	    err = sys___exit((userptr_t)tf->tf_a0);
+	    err = sys___exit(tf->tf_a0);
 	    break;
 
 	    case SYS_waitpid:
-	    err = sys___waitpid((userptr_t)tf->tf_a0,
-	    		(int *) tf->tf_a1,(userptr_t)tf->tf_a2);
+	    err = sys___waitpid(tf->tf_a0,(userptr_t)tf->tf_a1,tf->tf_a2);
 	    break;
-
+/*
+	    case SYS_fork:
+	    err = sys___fork(tf,&retval);
+	    break;
 */
 	    default:
 		kprintf("Unknown syscall %d\n", callno);
@@ -205,9 +207,10 @@ syscall(struct trapframe *tf)
  * both it and the code that calls it.
  *
  * Thus, you can trash it and do things another way if you prefer.
- */
+ *
 void
 enter_forked_process(struct trapframe *tf)
 {
 	(void)tf;
 }
+*/
