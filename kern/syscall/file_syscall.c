@@ -177,11 +177,17 @@ return 0;
 }
 
 int
-sys_close(int fd){						/*I have done KFREE not sure, whether we have to use this or not,
-  	  	  	  	  	  	  	  	  	  	  Just confirm once again*/
+sys_close(int fd){						/*I have done KFREE not sure, whether we have to use this or not, Just confirm once again*/
+
+  	if(fd <0 || fd>=__OPEN_MAX){
+			return EBADF;
+	}
 	struct file_descriptor *fd_frm_table;
 	struct vnode *vn;
 	fd_frm_table= curthread->file_table[fd];
+	if(fd_frm_table ==0 ){
+		return EBADF;
+	}
 	lock_acquire(fd_frm_table->f_lock);
 	fd_frm_table->reference_count--;
 	if(fd_frm_table->reference_count == 0){
@@ -209,14 +215,26 @@ sys_close(int fd){						/*I have done KFREE not sure, whether we have to use thi
 int
 sys_read(int fd, userptr_t buf, size_t buflen, int *return_value){
 
+
+
+
 	int result;
+	void* kbuf = kmalloc(buflen);
+	if ((result = copyin((const_userptr_t)buf, kbuf, buflen)) != 0){
+		kfree(kbuf);
+		return result;
+	}
+
+	if(fd <0 || fd>=__OPEN_MAX){
+		return EBADF;
+	}
 	struct file_descriptor *fd_frm_table;
 	struct vnode *vn;
 	struct iovec u_iovec;
 	struct uio u_uio;
-
 	fd_frm_table= curthread->file_table[fd];
-	if(fd_frm_table != 0){
+
+	if(fd_frm_table !=0 ){
 		lock_acquire(fd_frm_table->f_lock);
 		vn= fd_frm_table->f_object;
 
@@ -253,7 +271,17 @@ return 0;
  */
 int
 sys_write(int fd, userptr_t buf, size_t nbytes, int *return_value){
+
+
 	int result;
+	void* kbuf = kmalloc(nbytes);
+	if ((result = copyin((const_userptr_t)buf, kbuf, nbytes)) != 0){
+		kfree(kbuf);
+		return result;
+	}
+	if(fd <0 || fd>=__OPEN_MAX){
+			return EBADF;
+	}
 	struct file_descriptor *fd_frm_table;
 	struct vnode *vn;
 	struct iovec u_iovec;
@@ -300,12 +328,16 @@ return 0;
 
 int
 dup2(int oldfd, int newfd, int *return_value){
-	struct file_descriptor *fd;
-	fd= curthread->file_table[oldfd];
-	if(fd == 0  || newfd<0 || newfd>__OPEN_MAX || oldfd<0){
+
+	if(newfd<0 || newfd>=__OPEN_MAX || oldfd<0 || oldfd>=__OPEN_MAX){
 		return EBADF;
 	}
 	else{
+		struct file_descriptor *fd;
+		fd= curthread->file_table[oldfd];
+		if(fd==0){
+			return EBADF;
+		}
 		int count=0;
 		for(int i=3; i<__OPEN_MAX;i++){
 			if(curthread->file_table[i]!= 0){
