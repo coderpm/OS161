@@ -30,8 +30,8 @@ struct process_control
 	struct child_process *childlist;
 
 	//Semaphore to synchronize the the exit status
-	struct semaphore *exit_semaphore;
-
+	struct lock *process_lock;
+	struct cv *process_cv;
 };
 
 /* Function to allocate pid to the thread and initialize the contents of Process structure*/
@@ -49,34 +49,16 @@ int
 sys___getpid(int32_t *retval);
 
 int
-sys___exit(userptr_t user_seconds_ptr);
+sys___exit(int);
 
 int
-sys___waitpid(userptr_t processid,int *status,userptr_t options);
-
-
-void
-deallocate_pid(void);
-
-extern struct lock *pid_lock;
+sys___waitpid(int ,userptr_t ,int );
 
 void
-create_pidlock(void);
+deallocate_pid(pid_t processid);
 
-
-
-
-
-/*
- * Functions for waitpid
- */
-//waitpid(pid_t pid, int *status, int options);
-
-
-/*
- * Fork syscall
- */
-//int sys___fork(pid_t  *returnval, struct trapframe *tf);
+int
+sys___fork(struct trapframe *tf,pid_t  *returnval);
 
 
 #endif /* _PSYSCALL_H_ */

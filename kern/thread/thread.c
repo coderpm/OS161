@@ -187,7 +187,7 @@ thread_create(const char *name)
 	 */
 	allocate_pid(thread);
 
-	for(int i=PID_MIN;i<PROCESS_MAX;i++)
+	/*for(int i=PID_MIN;i<PROCESS_MAX;i++)
 	{
 		if(process_array[i]==0)
 		{
@@ -210,7 +210,7 @@ thread_create(const char *name)
 		}
 	}
 
-
+*/
 	//End of Additions by Pratham Malik
 
 
