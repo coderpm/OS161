@@ -40,14 +40,7 @@
 #include <threadlist.h>
 #include <file_syscall.h>
 #include <limits.h>
-/**
- * Author: Pratham Malik
- * included psyscalls.h and declared the process structure
- */
-#include <psyscall.h>
 
-struct process_control;
-//End of Additions by Pratham Malik
 
 struct addrspace;
 struct cpu;
@@ -136,7 +129,8 @@ struct thread {
 	 * Author: Pratham Malik
 	 * Added Process id variable for every thread
 	 */
-		pid_t t_pid;
+	pid_t t_pid;
+	//End of additions by PM
 
 };
 
