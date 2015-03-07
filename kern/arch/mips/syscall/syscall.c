@@ -97,9 +97,9 @@ syscall(struct trapframe *tf)
 	 * deal with it except for calls that return other values, 
 	 * like write.
 	 */
+//		kprintf("\nsyscall %d\n", callno);
 
 	retval = 0;
-
 	switch (callno) {
 	    case SYS_reboot:
 		err = sys_reboot(tf->tf_a0);

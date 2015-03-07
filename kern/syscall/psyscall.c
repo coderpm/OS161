@@ -189,7 +189,7 @@ sys___fork(struct trapframe *tf, pid_t *returnval)
 	data = (unsigned long) ada;
 //	long addr = (unsigned long) childspace;
 
-	result = thread_fork("nam",enter_process,sendtochild,data,&child);
+	result = thread_fork(curthread->t_name,enter_process,sendtochild,data,&child);
 
 	if(result)
 		return result;
