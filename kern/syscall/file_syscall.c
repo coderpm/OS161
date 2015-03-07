@@ -20,6 +20,7 @@
 #include <vnode.h>
 #include <stat.h>
 #include <kern/unistd.h>
+#include <kern/seek.h>
 
 
 struct file_descriptor*
@@ -139,7 +140,7 @@ sys_open(userptr_t filename, int flags, int *return_val)   /*Done using copyinst
 	char *file_name= k_des;
 		for(int i=3; i<__OPEN_MAX;i++){
 			if(curthread->file_table[i]==  0){
-				open_type= flags;
+				open_type= flags & O_ACCMODE;
 				switch(open_type){
 					case O_RDONLY:
 						result= vfs_open(k_des, O_RDONLY, 0, &vn);
@@ -408,3 +409,66 @@ chdir(userptr_t pathname){
 return 0;
 }
 
+int
+lseek(int fd, off_t pos, int whence, int64_t *return_value){
+
+	if(fd <0 || fd>=__OPEN_MAX){
+		return EBADF;
+	}
+	struct file_descriptor *fd_frm_table;
+	fd_frm_table= curthread->file_table[fd];
+	if(fd_frm_table == 0){
+			return EBADF;
+	}
+	void* kbuf = kmalloc(whence);
+	int result;
+	if ((result = copyin((const_userptr_t)whence, kbuf, whence)) != 0){
+		kfree(kbuf);
+		return result;
+	}
+	struct vnode *vn;
+	struct stat *st;
+	lock_acquire(fd_frm_table->f_lock);
+	vn= fd_frm_table->f_object;
+	int c_pos= fd_frm_table->f_offset;
+	switch((int)kbuf){
+		case SEEK_SET:
+			result= VOP_TRYSEEK(vn, pos);
+			if(result){
+				lock_release(fd_frm_table->f_lock);
+				return result;
+			}
+			fd_frm_table->f_offset= pos;
+		break;
+		case SEEK_CUR:
+			result= VOP_TRYSEEK(vn, (pos+c_pos));
+			if(result){
+				lock_release(fd_frm_table->f_lock);
+				return result;
+			}
+			fd_frm_table->f_offset= pos+c_pos;
+		break;
+		case SEEK_END:
+			result= VOP_STAT(vn, st);
+			if(result){
+				lock_release(fd_frm_table->f_lock);
+				return result;
+			}
+			off_t eof= st->st_size;
+			result= VOP_TRYSEEK(vn, (pos+eof));
+			if(result){
+				lock_release(fd_frm_table->f_lock);
+				return result;
+			}
+			fd_frm_table->f_offset= pos+eof;
+		break;
+		default:
+			return EINVAL;
+		break;
+	}
+	*return_value= fd_frm_table->f_offset;
+	lock_release(fd_frm_table->f_lock);
+
+
+return 0;
+}

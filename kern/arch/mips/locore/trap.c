@@ -39,7 +39,8 @@
 #include <vm.h>
 #include <mainbus.h>
 #include <syscall.h>
-#include <psyscall.h>
+#include <../../../include/psyscall.h>
+#include <../../../include/kern/wait.h>
 
 /* in exception.S */
 extern void asm_usermode(struct trapframe *tf);
@@ -115,9 +116,19 @@ kill_curthread(vaddr_t epc, unsigned code, vaddr_t vaddr)
 	kprintf("Fatal user mode trap %u sig %d (%s, epc 0x%x, vaddr 0x%x)\n",
 		code, sig, trapcodenames[code], epc, vaddr);
 
-//sys___exit(0);
+//Added by Pratham Malik
 
-	panic("I don't know how to handle this\n");
+		pid_t pid_process=curthread->t_pid;
+
+		//Store the exit code passed in the argument
+		process_array[pid_process]->exit_code= 0;
+
+		//Indicate Exit by calling changing the exit status in the process array
+		process_array[pid_process]->exit_status=true;
+
+		thread_exit();
+//End of Additions by PM
+//	panic("I don't know how to handle this\n");
 }
 
 /*
