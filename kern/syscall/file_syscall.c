@@ -123,10 +123,10 @@ return fd;
 int
 sys_open(userptr_t filename, int flags, int *return_val)   /*Done using copyinstr as said in blog*/
 {
-	int open_type;
 	struct file_descriptor *fd;
 	struct vnode *vn;
 	int result;
+	struct stat *st;
 	/*void des;
 	size_t length;
 	if((result=copyin((const_userptr_t)filename, &des, length ))!= 0){
@@ -140,32 +140,48 @@ sys_open(userptr_t filename, int flags, int *return_val)   /*Done using copyinst
 	char *file_name= k_des;
 		for(int i=3; i<__OPEN_MAX;i++){
 			if(curthread->file_table[i]==  0){
-				open_type= flags & O_ACCMODE;
-				switch(open_type){
-					case O_RDONLY:
-						result= vfs_open(k_des, O_RDONLY, 0, &vn);
-					break;
-					case O_RDWR:
-						result= vfs_open(k_des, O_RDWR, 0, &vn);
-					break;
-					case O_WRONLY:
-						result= vfs_open(k_des, O_WRONLY, 0, &vn);
-					break;
-					case O_APPEND:
-						result= vfs_open(k_des, O_RDWR, 0, &vn);
-					break;
-					default:
-						return EINVAL;
-					}
+				if((flags&O_ACCMODE)== O_RDONLY){
+					result= vfs_open(k_des, flags, 0, &vn);
+				}
+				else if((flags&O_ACCMODE)== O_WRONLY){
+					result= vfs_open(k_des, flags, 0, &vn);
+				}
+				else if((flags&O_ACCMODE)== O_RDWR){
+					result= vfs_open(k_des, flags, 0, &vn);
+				}
+				else if((flags&O_APPEND)== O_APPEND){
+					result= vfs_open(k_des, flags, 0, &vn);
 					if(result){
 						return result;
 					}
+					result= VOP_STAT(vn, st);
+					if(result){
+						return result;
+					}
+				}
+				else{
+					return EINVAL;
+				}
+				if(result){
+					return result;
+				}
 				fd= file_descriptor_init(file_name);
 				lock_acquire(fd->f_lock);
-				fd->f_flag= open_type;
+				if((flags& O_APPEND)== O_APPEND){
+					fd->f_flag= O_APPEND;
+				}
+				else{
+					fd->f_flag= (flags&O_ACCMODE);
+				}
+
 				//fd.f_name= k_des;
 				fd->f_object= vn;
-				fd->f_offset=0;
+				if(st != NULL){
+					fd->f_offset= st->st_size;
+				}
+				else{
+					fd->f_offset=0;
+				}
 				fd->reference_count=1;
 				*return_val= i;
 				curthread->file_table[i]=fd;
@@ -420,9 +436,10 @@ lseek(int fd, off_t pos, int whence, int64_t *return_value){
 	if(fd_frm_table == 0){
 			return EBADF;
 	}
-	void* kbuf = kmalloc(whence);
+	int sz;
+	int* kbuf = kmalloc(sz);
 	int result;
-	if ((result = copyin((const_userptr_t)whence, kbuf, whence)) != 0){
+	if ((result = copyin((const_userptr_t)whence, kbuf, sz)) != 0){
 		kfree(kbuf);
 		return result;
 	}
@@ -431,40 +448,39 @@ lseek(int fd, off_t pos, int whence, int64_t *return_value){
 	lock_acquire(fd_frm_table->f_lock);
 	vn= fd_frm_table->f_object;
 	int c_pos= fd_frm_table->f_offset;
-	switch((int)kbuf){
-		case SEEK_SET:
-			result= VOP_TRYSEEK(vn, pos);
+
+	if((*kbuf&SEEK_SET)== SEEK_SET){
+		result= VOP_TRYSEEK(vn, pos);
 			if(result){
 				lock_release(fd_frm_table->f_lock);
 				return result;
 			}
 			fd_frm_table->f_offset= pos;
-		break;
-		case SEEK_CUR:
-			result= VOP_TRYSEEK(vn, (pos+c_pos));
-			if(result){
-				lock_release(fd_frm_table->f_lock);
-				return result;
-			}
-			fd_frm_table->f_offset= pos+c_pos;
-		break;
-		case SEEK_END:
-			result= VOP_STAT(vn, st);
-			if(result){
-				lock_release(fd_frm_table->f_lock);
-				return result;
-			}
-			off_t eof= st->st_size;
-			result= VOP_TRYSEEK(vn, (pos+eof));
-			if(result){
-				lock_release(fd_frm_table->f_lock);
-				return result;
-			}
-			fd_frm_table->f_offset= pos+eof;
-		break;
-		default:
-			return EINVAL;
-		break;
+	}
+	else if((*kbuf&SEEK_CUR)== SEEK_CUR){
+		result= VOP_TRYSEEK(vn, (pos+c_pos));
+		if(result){
+			lock_release(fd_frm_table->f_lock);
+			return result;
+		}
+		fd_frm_table->f_offset= pos+c_pos;
+	}
+	else if((*kbuf&SEEK_END)== SEEK_END){
+		result= VOP_STAT(vn, st);
+		if(result){
+		lock_release(fd_frm_table->f_lock);
+		return result;
+		}
+		off_t eof= st->st_size;
+		result= VOP_TRYSEEK(vn, (pos+eof));
+		if(result){
+		lock_release(fd_frm_table->f_lock);
+		return result;
+		}
+		fd_frm_table->f_offset= pos+eof;
+	}
+	else{
+		return EINVAL;
 	}
 	*return_value= fd_frm_table->f_offset;
 	lock_release(fd_frm_table->f_lock);
