@@ -116,8 +116,11 @@ kill_curthread(vaddr_t epc, unsigned code, vaddr_t vaddr)
 	kprintf("Fatal user mode trap %u sig %d (%s, epc 0x%x, vaddr 0x%x)\n",
 		code, sig, trapcodenames[code], epc, vaddr);
 
+
+		sys___exit(0);
 //Added by Pratham Malik
 
+/*
 		pid_t pid_process=curthread->t_pid;
 
 		//Store the exit code passed in the argument
@@ -127,6 +130,7 @@ kill_curthread(vaddr_t epc, unsigned code, vaddr_t vaddr)
 		process_array[pid_process]->exit_status=true;
 
 		thread_exit();
+*/
 //End of Additions by PM
 //	panic("I don't know how to handle this\n");
 }

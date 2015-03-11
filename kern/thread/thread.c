@@ -568,6 +568,35 @@ thread_fork(const char *name,
 	}
 	thread_checkstack_init(newthread);
 
+	/*
+	 * Author: Pratham Malik
+	 * Copy the addrspace for the child
+	 */
+
+
+	int result;
+
+	if(curthread->t_addrspace!=NULL)
+	{
+		struct addrspace *childspace;
+		childspace = kmalloc(sizeof(struct addrspace));
+		if(childspace == NULL)
+			return ENOMEM;
+
+		result = as_copy(curthread->t_addrspace,&childspace);
+		if(result)
+			return result;
+
+//		childsp = *childspace;
+		newthread->t_addrspace = childspace;
+		if(newthread->t_addrspace==NULL)
+			return ENOMEM;
+	}
+
+
+
+
+	//End of additions by PM
 
 	/*
 	 * Now we clone various fields from the parent thread.
@@ -578,13 +607,39 @@ thread_fork(const char *name,
 
 	/* VM fields */
 	/* do not clone address space -- let caller decide on that */
-	newthread->t_addrspace=curthread->t_addrspace;
+
 	/* VFS fields */
 	if (curthread->t_cwd != NULL) {
 		VOP_INCREF(curthread->t_cwd);
 		newthread->t_cwd = curthread->t_cwd;
 	}
 
+	/**
+	 * Author: Pratham Malik
+	 */
+
+	int counter=0;
+	for(counter=0;counter<__OPEN_MAX;counter++)
+	{
+		if(curthread->file_table[counter]!=0)
+		{
+			newthread->file_table[counter]=kmalloc(sizeof(struct file_descriptor));
+			newthread->file_table[counter]=curthread->file_table[counter];
+			if(counter>2)
+				curthread->file_table[counter]->reference_count++;
+		}else
+		{
+			newthread->file_table[counter]=0;
+		}
+	}
+
+	//Also add the parent id to the process array entry for the new child
+	pid_t parent_id = curthread->t_pid;
+	pid_t child_id = newthread->t_pid;
+
+	process_array[child_id]->parent_id = parent_id;
+
+	//End by PM
 	/*
 	 * Because new threads come out holding the cpu runqueue lock
 	 * (see notes at bottom of thread_switch), we need to account
@@ -596,11 +651,6 @@ thread_fork(const char *name,
 	switchframe_init(newthread, entrypoint, data1, data2);
 
 
-
-
-	/* Lock the current cpu's run queue and make the new thread runnable */
-	thread_make_runnable(newthread, false);
-
 	/*
 	 * Return new thread structure if it's wanted. Note that using
 	 * the thread structure from the parent thread should be done
@@ -610,6 +660,12 @@ thread_fork(const char *name,
 	if (ret != NULL) {
 		*ret = newthread;
 	}
+
+
+
+	/* Lock the current cpu's run queue and make the new thread runnable */
+	thread_make_runnable(newthread, false);
+
 
 	return 0;
 }
@@ -874,6 +930,30 @@ thread_exit(void)
 		VOP_DECREF(cur->t_cwd);
 		cur->t_cwd = NULL;
 	}
+
+	/**
+	 * Author:Pratham Malik
+	 * clearing the thread new variables added due to ASST2
+	 * and decreasing the reference count for parent thread
+	 */
+
+	pid_t parent_id = process_array[cur->t_pid]->parent_id;
+	if(parent_id>PID_MIN)
+	{
+		int counter=0;
+			for(counter=3;counter<__OPEN_MAX;counter++)
+			{
+				if(cur->file_table[counter]!=0)
+				{
+					process_array[parent_id]->mythread->file_table[counter]->reference_count--;
+				}else
+				{
+					//newthread->file_table[counter]=0;
+				}
+			}
+	}
+
+	//End of additions by PM
 
 	/* VM fields */
 	if (cur->t_addrspace) {

@@ -126,7 +126,7 @@ sys_open(userptr_t filename, int flags, int *return_val)   /*Done using copyinst
 	struct file_descriptor *fd;
 	struct vnode *vn;
 	int result;
-	struct stat *st;
+	struct stat st;
 	/*void des;
 	size_t length;
 	if((result=copyin((const_userptr_t)filename, &des, length ))!= 0){
@@ -154,7 +154,7 @@ sys_open(userptr_t filename, int flags, int *return_val)   /*Done using copyinst
 					if(result){
 						return result;
 					}
-					result= VOP_STAT(vn, st);
+					result= VOP_STAT(vn, &st);
 					if(result){
 						return result;
 					}
@@ -176,8 +176,8 @@ sys_open(userptr_t filename, int flags, int *return_val)   /*Done using copyinst
 
 				//fd.f_name= k_des;
 				fd->f_object= vn;
-				if(st != NULL){
-					fd->f_offset= st->st_size;
+				if(&st != NULL){
+					fd->f_offset= st.st_size;
 				}
 				else{
 					fd->f_offset=0;
@@ -444,7 +444,7 @@ lseek(int fd, off_t pos, int whence, int64_t *return_value){
 		return result;
 	}
 	struct vnode *vn;
-	struct stat *st;
+	struct stat st;
 	lock_acquire(fd_frm_table->f_lock);
 	vn= fd_frm_table->f_object;
 	int c_pos= fd_frm_table->f_offset;
@@ -466,12 +466,12 @@ lseek(int fd, off_t pos, int whence, int64_t *return_value){
 		fd_frm_table->f_offset= pos+c_pos;
 	}
 	else if((*kbuf&SEEK_END)== SEEK_END){
-		result= VOP_STAT(vn, st);
+		result= VOP_STAT(vn, &st);
 		if(result){
 		lock_release(fd_frm_table->f_lock);
 		return result;
 		}
-		off_t eof= st->st_size;
+		off_t eof= st.st_size;
 		result= VOP_TRYSEEK(vn, (pos+eof));
 		if(result){
 		lock_release(fd_frm_table->f_lock);
