@@ -579,7 +579,7 @@ thread_fork(const char *name,
 	if(curthread->t_addrspace!=NULL)
 	{
 		struct addrspace *childspace;
-		childspace = kmalloc(sizeof(struct addrspace));
+		childspace = kmalloc(sizeof(struct addrspace *));
 		if(childspace == NULL)
 			return ENOMEM;
 
