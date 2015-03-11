@@ -98,8 +98,10 @@ syscall(struct trapframe *tf)
 	 * deal with it except for calls that return other values, 
 	 * like write.
 	 */
+//		kprintf("\nsyscall %d\n", callno);
 
 	retval = 0;
+
 	ret_value=0;
 	int64_t lseek_variable=0;
 	switch (callno) {
@@ -170,6 +172,12 @@ syscall(struct trapframe *tf)
 	    case SYS_fork:
 	    err = sys___fork(tf,&retval);
 	    break;
+
+
+	    case SYS_execv:
+	    err = sys___execv((userptr_t)tf->tf_a0,(userptr_t)tf->tf_a1);
+	    break;
+
 
 	    default:
 		kprintf("Unknown syscall %d\n", callno);

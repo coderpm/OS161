@@ -31,8 +31,9 @@ struct process_control
 	struct child_process *childlist;
 
 	//Semaphore to synchronize the the exit status
-	struct lock *process_lock;
-	struct cv *process_cv;
+	struct semaphore *process_sem;
+	//struct lock *process_lock;
+	//struct cv *process_cv;
 };
 
 struct child_process{
@@ -67,7 +68,7 @@ sys___fork(struct trapframe *tf,pid_t  *returnval);
 void
 enter_process(void *tf,unsigned long addr);
 
-void
-copy_trapframe(struct trapframe *src,struct trapframe *dest);
+int
+sys___execv(userptr_t ,userptr_t);
 
 #endif /* _PSYSCALL_H_ */

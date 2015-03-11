@@ -176,7 +176,11 @@ sys_open(userptr_t filename, int flags, int *return_val)   /*Done using copyinst
 
 				//fd.f_name= k_des;
 				fd->f_object= vn;
+<<<<<<< HEAD
 				/*if(st != NULL){
+=======
+				if(&st != NULL){
+>>>>>>> de127743e2af7ff8527947f46faa5df10b759df7
 					fd->f_offset= st.st_size;
 				}
 				else{*/
@@ -468,6 +472,7 @@ lseek(int fd, off_t pos, int32_t whence, int32_t *return_value1, int32_t *return
 			fd_frm_table->f_offset= pos+c_pos;
 	}
 	else if((*kbuf&O_ACCMODE)== SEEK_END){
+
 		result= VOP_STAT(vn, &st);
 		if(result){
 		lock_release(fd_frm_table->f_lock);
