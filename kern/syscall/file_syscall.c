@@ -126,7 +126,7 @@ sys_open(userptr_t filename, int flags, int *return_val)   /*Done using copyinst
 	struct file_descriptor *fd;
 	struct vnode *vn;
 	int result;
-	struct stat *st;
+	struct stat st;
 	/*void des;
 	size_t length;
 	if((result=copyin((const_userptr_t)filename, &des, length ))!= 0){
@@ -154,7 +154,7 @@ sys_open(userptr_t filename, int flags, int *return_val)   /*Done using copyinst
 					if(result){
 						return result;
 					}
-					result= VOP_STAT(vn, st);
+					result= VOP_STAT(vn, &st);
 					if(result){
 						return result;
 					}
@@ -176,12 +176,12 @@ sys_open(userptr_t filename, int flags, int *return_val)   /*Done using copyinst
 
 				//fd.f_name= k_des;
 				fd->f_object= vn;
-				if(st != NULL){
-					fd->f_offset= st->st_size;
+				/*if(st != NULL){
+					fd->f_offset= st.st_size;
 				}
-				else{
+				else{*/
 					fd->f_offset=0;
-				}
+				//}
 				fd->reference_count=1;
 				*return_val= i;
 				curthread->file_table[i]=fd;
@@ -209,13 +209,14 @@ sys_close(int fd){						/*I have done KFREE not sure, whether we have to use thi
 	fd_frm_table->reference_count--;
 	if(fd_frm_table->reference_count == 0){
 		vn= fd_frm_table->f_object;
-		VOP_DECREF(vn);
 		vfs_close(vn);
 		lock_release(fd_frm_table->f_lock);
 		file_descriptor_cleanup(fd_frm_table);
+		//&return_value= 0;
 		return 0;
 	}
 	lock_release(fd_frm_table->f_lock);
+	//&return_value=0;
 	return 0;
 }
 
@@ -272,7 +273,7 @@ sys_read(int fd, userptr_t buf, size_t buflen, int *return_value){
 		}
 		else{
 			*return_value= (buflen-u_uio.uio_resid); /*Need to return the length left to read, I think*/
-			fd_frm_table->f_offset= buflen-u_uio.uio_resid;
+			fd_frm_table->f_offset+= buflen-u_uio.uio_resid;
 			lock_release(fd_frm_table->f_lock);
 		}
 	}
@@ -331,7 +332,7 @@ sys_write(int fd, userptr_t buf, size_t nbytes, int *return_value){
 		}
 		else{
 			*return_value= (nbytes-u_uio.uio_resid);
-			fd_frm_table->f_offset= nbytes-u_uio.uio_resid;
+			fd_frm_table->f_offset+= nbytes-u_uio.uio_resid;
 			lock_release(fd_frm_table->f_lock);
 		}
 	}
@@ -426,7 +427,7 @@ return 0;
 }
 
 int
-lseek(int fd, off_t pos, int whence, int64_t *return_value){
+lseek(int fd, off_t pos, int32_t whence, int32_t *return_value1, int32_t *return_value2){
 
 	if(fd <0 || fd>=__OPEN_MAX){
 		return EBADF;
@@ -436,42 +437,43 @@ lseek(int fd, off_t pos, int whence, int64_t *return_value){
 	if(fd_frm_table == 0){
 			return EBADF;
 	}
-	int sz;
-	int* kbuf = kmalloc(sz);
+	//int32_t *sz= &whence;
+	int* kbuf = kmalloc(sizeof(whence));
 	int result;
-	if ((result = copyin((const_userptr_t)whence, kbuf, sz)) != 0){
+	if ((result = copyin((const_userptr_t)whence, kbuf, sizeof(whence))) != 0){
 		kfree(kbuf);
 		return result;
 	}
 	struct vnode *vn;
-	struct stat *st;
+	struct stat st;
 	lock_acquire(fd_frm_table->f_lock);
 	vn= fd_frm_table->f_object;
 	int c_pos= fd_frm_table->f_offset;
 
-	if((*kbuf&SEEK_SET)== SEEK_SET){
+	if((*kbuf&O_ACCMODE)== SEEK_SET){
 		result= VOP_TRYSEEK(vn, pos);
 			if(result){
 				lock_release(fd_frm_table->f_lock);
 				return result;
 			}
 			fd_frm_table->f_offset= pos;
+
 	}
-	else if((*kbuf&SEEK_CUR)== SEEK_CUR){
+	else if((*kbuf&O_ACCMODE)== SEEK_CUR){
 		result= VOP_TRYSEEK(vn, (pos+c_pos));
-		if(result){
-			lock_release(fd_frm_table->f_lock);
-			return result;
-		}
-		fd_frm_table->f_offset= pos+c_pos;
+			if(result){
+				lock_release(fd_frm_table->f_lock);
+				return result;
+			}
+			fd_frm_table->f_offset= pos+c_pos;
 	}
-	else if((*kbuf&SEEK_END)== SEEK_END){
-		result= VOP_STAT(vn, st);
+	else if((*kbuf&O_ACCMODE)== SEEK_END){
+		result= VOP_STAT(vn, &st);
 		if(result){
 		lock_release(fd_frm_table->f_lock);
 		return result;
 		}
-		off_t eof= st->st_size;
+		off_t eof= st.st_size;
 		result= VOP_TRYSEEK(vn, (pos+eof));
 		if(result){
 		lock_release(fd_frm_table->f_lock);
@@ -482,7 +484,11 @@ lseek(int fd, off_t pos, int whence, int64_t *return_value){
 	else{
 		return EINVAL;
 	}
-	*return_value= fd_frm_table->f_offset;
+	int64_t final_value= fd_frm_table->f_offset;
+	int32_t high = (int32_t)((final_value & 0xFFFFFFFF00000000) >> 32);
+	int32_t low = (int32_t)(final_value & 0xFFFFFFFF);
+	*return_value1= high;
+	*return_value2= low;
 	lock_release(fd_frm_table->f_lock);
 
 
