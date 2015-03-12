@@ -194,33 +194,26 @@ int
 sys___fork(struct trapframe *tf, pid_t *returnval)
 {
 	int result;
-	struct sendthing *sendtochild;
 	struct thread *child;
+	struct trapframe *parent_tf;
 
-
-	sendtochild = kmalloc(sizeof(struct sendthing));
-	if(sendtochild==NULL)
+	parent_tf = kmalloc(sizeof(struct trapframe));
+	if(parent_tf==NULL)
 		return ENOMEM;
 
-	sendtochild->childtf = tf;
+	parent_tf=tf;
 
 
-	sendtochild->parentaddr= curthread->t_addrspace;
+	pid_t current_pid = curthread->t_pid;
 
-	pid_t ada= curthread->t_pid;
-	unsigned long data;
-	data = (unsigned long) ada;
-//	long addr = (unsigned long) childspace;
+	unsigned long parent_pid;
+	parent_pid = (unsigned long) current_pid;
 
-	result = thread_fork(curthread->t_name,enter_process,sendtochild,data,&child);
+	result = thread_fork(curthread->t_name,enter_process,parent_tf,parent_pid,&child);
+
 	if(result){
-		if(child->t_pid > 0)
-		deallocate_pid(child->t_pid);
 		return result;
-
 	}
-
-
 
 	*returnval = child->t_pid;
 
@@ -230,42 +223,27 @@ sys___fork(struct trapframe *tf, pid_t *returnval)
 void
 enter_process(void *tf,unsigned long addr)
 {
-
-	/*int result;
-	struct addrspace *childspace;
-*/
-
-	struct sendthing *childthings;
-	//	(void)tf;
-
-	childthings = kmalloc(sizeof(struct sendthing));
-	if(childthings!=NULL)
+	struct trapframe *childframe,child_tf;
+//	struct addrspace *childspace;
+	if(tf!=NULL)
 	{
-		struct trapframe *temp_child,finalchild;
 
-		childthings = (struct sendthing *)tf;
-		//Create a new address space and copy the address from pointer received from the parent
+		tf = (struct trapframe *) tf;
+		childframe = tf;
+		//copy the trapframe info now into the child_tf
 
-	/*	struct addrspace *childspace;
-		int result;
-		childspace = kmalloc(sizeof(struct addrspace));
-		if(childspace!=NULL)
-		{
-			result = as_copy(childthings->parentaddr, &childspace);
-			if(result==0)
-				curthread->t_addrspace = childspace;
-		}
+
+	/*	childframe->tf_a3 =0;
+		childframe->tf_v0 =0;
+		childframe->tf_epc +=4;
 */
-		//copy the trapframe info now
+		child_tf = *childframe;
 
-		temp_child = childthings->childtf;
+		child_tf.tf_a3=0;
+		child_tf.tf_v0=0;
 
-		finalchild = *temp_child;
+		child_tf.tf_epc +=4;
 
-		finalchild.tf_a3=0;
-		finalchild.tf_v0=0;
-
-		finalchild.tf_epc = finalchild.tf_epc + 4;
 
 		pid_t parentid = (pid_t)addr;
 		if(process_array[curthread->t_pid]->parent_id!=parentid)
@@ -274,10 +252,8 @@ enter_process(void *tf,unsigned long addr)
 		if(!(curthread->t_addrspace==NULL))
 			as_activate(curthread->t_addrspace);
 
-		mips_usermode(&finalchild);
-
+		mips_usermode(&child_tf);
 	}
-
 }
 
 int

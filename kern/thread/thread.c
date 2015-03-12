@@ -554,6 +554,7 @@ thread_fork(const char *name,
 	    struct thread **ret)
 {
 	struct thread *newthread;
+	struct addrspace *childspace;
 
 	newthread = thread_create(name);
 	if (newthread == NULL) {
@@ -572,14 +573,11 @@ thread_fork(const char *name,
 	 * Author: Pratham Malik
 	 * Copy the addrspace for the child
 	 */
-
-
 	int result;
 
 	if(curthread->t_addrspace!=NULL)
 	{
-		struct addrspace *childspace;
-		childspace = kmalloc(sizeof(struct addrspace *));
+		childspace = kmalloc(sizeof(struct addrspace));
 		if(childspace == NULL)
 			return ENOMEM;
 
@@ -587,14 +585,12 @@ thread_fork(const char *name,
 		if(result)
 			return result;
 
-//		childsp = *childspace;
 		newthread->t_addrspace = childspace;
+
 		if(newthread->t_addrspace==NULL)
 			return ENOMEM;
 	}
 
-//	alladdr[curthread->t_pid]=curthread->t_addrspace;
-//	alladdr[newthread->t_pid]=newthread->t_addrspace;
 
 	//End of additions by PM
 
@@ -640,6 +636,8 @@ thread_fork(const char *name,
 	process_array[child_id]->parent_id = parent_id;
 
 	//End by PM
+
+
 	/*
 	 * Because new threads come out holding the cpu runqueue lock
 	 * (see notes at bottom of thread_switch), we need to account
@@ -660,8 +658,6 @@ thread_fork(const char *name,
 	if (ret != NULL) {
 		*ret = newthread;
 	}
-
-
 
 	/* Lock the current cpu's run queue and make the new thread runnable */
 	thread_make_runnable(newthread, false);

@@ -176,8 +176,6 @@ sys_open(userptr_t filename, int flags, int *return_val)   /*Done using copyinst
 
 				//fd.f_name= k_des;
 				fd->f_object= vn;
-	//			}
-	//			else{*/
 					fd->f_offset=0;
 				//}
 				fd->reference_count=1;
@@ -211,6 +209,7 @@ sys_close(int fd){						/*I have done KFREE not sure, whether we have to use thi
 		lock_release(fd_frm_table->f_lock);
 		file_descriptor_cleanup(fd_frm_table);
 		//&return_value= 0;
+		curthread->file_table[fd]=0;
 		return 0;
 	}
 	lock_release(fd_frm_table->f_lock);
