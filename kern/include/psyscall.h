@@ -4,7 +4,7 @@
 #include <types.h>
 #include <thread.h>
 #include <limits.h>
-
+#include <addrspace.h>
 
 struct trapframe;
 struct thread;
@@ -13,7 +13,7 @@ struct thread;
  * Declared array for pid tracking
  */
 extern struct process_control *process_array[PROCESS_MAX];
-
+extern struct addrspace alladdr[PROCESS_MAX];
 /**
 * Structure for Process Control
 */

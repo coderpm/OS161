@@ -176,14 +176,8 @@ sys_open(userptr_t filename, int flags, int *return_val)   /*Done using copyinst
 
 				//fd.f_name= k_des;
 				fd->f_object= vn;
-<<<<<<< HEAD
-				/*if(st != NULL){
-=======
-				if(&st != NULL){
->>>>>>> de127743e2af7ff8527947f46faa5df10b759df7
-					fd->f_offset= st.st_size;
-				}
-				else{*/
+	//			}
+	//			else{*/
 					fd->f_offset=0;
 				//}
 				fd->reference_count=1;

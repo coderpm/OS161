@@ -54,7 +54,7 @@
  */
 #include <psyscall.h>
 struct process_control *process_array[PROCESS_MAX];
-
+struct addrspace alladdr[PROCESS_MAX];
 //End of Additions by PM
 
 
@@ -593,8 +593,8 @@ thread_fork(const char *name,
 			return ENOMEM;
 	}
 
-
-
+//	alladdr[curthread->t_pid]=curthread->t_addrspace;
+//	alladdr[newthread->t_pid]=newthread->t_addrspace;
 
 	//End of additions by PM
 

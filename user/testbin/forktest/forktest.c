@@ -75,7 +75,7 @@ check(void)
 	int i;
 
 	mypid = getpid();
-		kprintf("THe pid is %d",mypid);
+		printf("THe pid is %d",mypid);
 	/* Make sure each fork has its own address space. */
 	for (i=0; i<800; i++) {
 		volatile int seenpid;

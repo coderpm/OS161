@@ -213,8 +213,12 @@ sys___fork(struct trapframe *tf, pid_t *returnval)
 //	long addr = (unsigned long) childspace;
 
 	result = thread_fork(curthread->t_name,enter_process,sendtochild,data,&child);
-	if(result)
+	if(result){
+		if(child->t_pid > 0)
+		deallocate_pid(child->t_pid);
 		return result;
+
+	}
 
 
 
