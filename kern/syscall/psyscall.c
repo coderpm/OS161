@@ -446,6 +446,19 @@ sys___execv(userptr_t p_name,userptr_t ar)
 	if(kname==NULL)
 		return ENOMEM;
 
+	char **arguments = (char **)ar;
+		char **karguments = kmalloc(sizeof(arguments));
+
+		/*int counter=0;
+		while(arguments[counter] != NULL)
+		{
+
+		}*/
+
+		result = copyin((const_userptr_t) arguments,karguments,sizeof(karguments));
+		if(result)
+			return result;
+
 //	result = copyin(p_name,kname,sizeof(p_name));
 	result = copyinstr(p_name,kname,sizeof(p_name),&copied_length);
 	if(result)
@@ -460,13 +473,6 @@ sys___execv(userptr_t p_name,userptr_t ar)
 		return EINVAL;
 	}
 
-
-	char **arguments = (char **)ar;
-	char **karguments = kmalloc(sizeof(arguments));
-
-	result = copyin((const_userptr_t) arguments,karguments,sizeof(karguments));
-	if(result)
-		return result;
 	//Open the file.
 		result = vfs_open(kname, O_RDONLY, 0, &p_vnode);
 		if (result) {
