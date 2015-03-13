@@ -54,14 +54,26 @@
  * Calls vfs_open on progname and thus may destroy it.
  */
 int
-runprogram(char *progname)
+runprogram(char *progname, char **args)
 {
 	struct vnode *v;
 	vaddr_t entrypoint, stackptr;
 	int result;
 
-	char k_des[NAME_MAX];
-	memcpy(k_des, progname, NAME_MAX);
+	//char *k_arr= kmalloc(sizeof(args));
+	int counter=0;
+	while(args[counter] != NULL){
+		counter++;
+		/*if ((result = copyin((const_userptr_t)args[counter], k_arr, sizeof(args[counter]))) != 0){
+			kfree(k_arr);
+			return result;
+		}
+*/
+	}
+
+	char k_des[PATH_MAX];
+	memcpy(k_des, progname,PATH_MAX);
+
 	/* Open the file. */
 	result = vfs_open(k_des, O_RDONLY, 0, &v);
 	if (result) {
@@ -104,7 +116,10 @@ runprogram(char *progname)
 	*
 	* Started for file table initialization
 	*/
-
+	result= copyout(progname, (userptr_t) &stackptr, sizeof(progname));
+	if(result){
+		return result;
+	}
 	int result1=100;
 	//kprintf("Inside run program");
 	result1= intialize_file_desc_tbl(curthread->file_table);
@@ -115,6 +130,8 @@ runprogram(char *progname)
 	/*
 	* Ended
 	*/
+
+
 	/* Warp to user mode. */
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
 			  stackptr, entrypoint);
