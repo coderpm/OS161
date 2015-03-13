@@ -333,10 +333,11 @@ sys___execv(userptr_t p_name,userptr_t ar)
 	size_t copied_length;
 
 	char *kname; // name of the program copied in kernel
-	char *pname; //	name of pname
+//	char *pname; //	name of pname
 
-	pname = (char *) p_name;
+//	pname = (char *) p_name;
 
+/*
 	if(p_name==NULL)
 		return EFAULT;
 
@@ -345,6 +346,7 @@ sys___execv(userptr_t p_name,userptr_t ar)
 
 	if(pname == '\0')
 		return ENOEXEC;
+*/
 
 	kname = (char *) kmalloc(sizeof(p_name));
 	if(kname==NULL)
@@ -354,14 +356,18 @@ sys___execv(userptr_t p_name,userptr_t ar)
 	result = copyinstr(p_name,kname,sizeof(p_name),&copied_length);
 	if(result)
 	{
+
 		kfree(kname);
 		return result;
 	}
+
+/*
 	if(copied_length == 1)
 	{
 		kfree(kname);
-		return EFAULT;
+		return EINVAL;
 	}
+*/
 
 	//Copy into the kernel buffer
 	char **user_args = (char **) ar;

@@ -100,7 +100,7 @@ cmd_progthread(void *ptr, unsigned long nargs)
 
 	strcpy(progname, args[0]);
 
-	result = runprogram(progname);
+	result = runprogram(progname,args);
 	if (result) {
 		kprintf("Running program %s failed: %s\n", args[0],
 			strerror(result));

@@ -45,6 +45,8 @@
 #include <syscall.h>
 #include <test.h>
 #include <file_syscall.h>
+
+#include <copyinout.h>
 /*
  *
  * Load program "progname" and start running it in usermode.
@@ -53,11 +55,46 @@
  * Calls vfs_open on progname and thus may destroy it.
  */
 int
-runprogram(char *progname)
+runprogram(char *progname,char **args)
 {
 	struct vnode *v;
 	vaddr_t entrypoint, stackptr;
 	int result;
+
+	/**
+	 * Author: Pratham Malik
+	 * adding code for accepting and check program name and arguments
+	 */
+
+	char **user_args;
+	char *temp;
+	int counter;
+
+	counter=0;
+
+	//Copy the first argument
+	user_args = kmalloc(sizeof(char **));
+	if(user_args==NULL)
+	{
+		return ENOMEM;
+	}
+
+	temp = kmalloc(sizeof(char *));
+	if(temp==NULL)
+	{
+		kfree(user_args);
+		return ENOMEM;
+	}
+
+	while(args[counter] != NULL)
+	{
+		temp = args[counter];
+		user_args[counter]=temp;
+		counter++;
+	}
+
+	kfree(temp);
+	//End of additions by PM
 
 	/* Open the file. */
 	result = vfs_open(progname, O_RDONLY, 0, &v);
@@ -97,7 +134,10 @@ runprogram(char *progname)
 		return result;
 	}
 
-
+/**
+ * Author: Mohit Arora
+ * Initialing the file table
+ */
 	int result1=100;
 	kprintf("Inside run program");
 	result1= intialize_file_desc_tbl(curthread->file_table);
@@ -106,6 +146,7 @@ runprogram(char *progname)
 		return result1;
 	}
 
+//End of Additions by MA
 
 	/* Warp to user mode. */
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
