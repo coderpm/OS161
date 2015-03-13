@@ -61,6 +61,11 @@ sys___exit(int);
 int
 sys___waitpid(int ,userptr_t ,int ,int32_t *retval);
 
+int
+sys___kwaitpid(int ,int *status,int ,int32_t *retval);
+
+
+
 void
 deallocate_pid(pid_t processid);
 

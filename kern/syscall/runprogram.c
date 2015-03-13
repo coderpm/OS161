@@ -61,11 +61,25 @@ runprogram(char *progname,char **argss)
 	vaddr_t entrypoint, stackptr;
 	int result;
 
+	if(argss==NULL)
+	{
+		//Do Nothing
 
-	/**
+	}
+	else
+	{
+		char **user_args;
+		user_args = kmalloc(sizeof(char **));
+
+		user_args[0]=argss[0];
+
+	}
+/*
+
+	*
 	 * Author:Pratham Malik
 	 * adding arguments to stack
-	 */
+
 	int counter;
 	char **user_args;
 	char *temp;
@@ -114,24 +128,25 @@ runprogram(char *progname,char **argss)
 			user_args[counter] = kmalloc(sizeof(new_length));
 			user_args[counter] = final;
 //			result = copyout(final,(userptr_t) user_args[counter],sizeof(new_length));
-	/*			if(result)
+				if(result)
 					return result;
-*/
+
 
 		}
 		counter++;
 	}
 
-/*
+
 	char **userspacearg = kmalloc(sizeof(user_args));
 	result = copyout(user_args,(userptr_t) userspacearg,sizeof(userspacearg));
 	if(result)
 		return result;
-*/
+
 
 	//End of additions by PM
 
 
+*/
 	/* Open the file. */
 	result = vfs_open(progname, O_RDONLY, 0, &v);
 	if (result) {

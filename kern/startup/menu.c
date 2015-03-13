@@ -107,6 +107,8 @@ cmd_progthread(void *ptr, unsigned long nargs)
 		return;
 	}
 
+	sys___exit(0);
+
 	/* NOTREACHED: runprogram only returns on error. */
 }
 
@@ -133,14 +135,43 @@ common_prog(int nargs, char **args)
 		"synchronization-problems kernel.\n");
 #endif
 
+	/**
+	 * Author: Pratham Malik
+	 * Changing thread
+	 */
+
+	struct thread *childthr;
+	pid_t child_pid;
+
 	result = thread_fork(args[0] /* thread name */,
 			cmd_progthread /* thread function */,
 			args /* thread arg */, nargs /* thread arg */,
-			NULL);
+			&childthr);
 	if (result) {
 		kprintf("thread_fork failed: %s\n", strerror(result));
 		return result;
 	}
+
+	child_pid = childthr->t_pid;
+
+
+ 	int status;
+	int32_t retval;
+
+//	status = kmalloc(sizeof(userptr_t));
+	result = sys___kwaitpid(child_pid,&status,0,&retval);
+	if(result)
+		return result;
+
+
+
+
+/*
+	result = thread_fork(args[0]  thread name ,
+			cmd_progthread  thread function ,
+			args  thread arg , nargs  thread arg ,
+			NULL);
+*/
 
 	return 0;
 }

@@ -48,7 +48,7 @@ index ff39633..cb2b6a0 100644
  
  /*
 diff --git a/kern/arch/mips/syscall/syscall.c b/kern/arch/mips/syscall/syscall.c
-index 0f773bd..3e637c6 100644
+index 0f773bd..1117b51 100644
 --- a/kern/arch/mips/syscall/syscall.c
 +++ b/kern/arch/mips/syscall/syscall.c
 @@ -35,6 +35,7 @@
@@ -137,7 +137,7 @@ index 0f773bd..3e637c6 100644
 +	    break;
 +
 +	    case SYS_waitpid:
-+	    err = sys___waitpid(tf->tf_a0,(userptr_t)tf->tf_a1,tf->tf_a2);
++	    err = sys___waitpid(tf->tf_a0,(userptr_t)tf->tf_a1,tf->tf_a2,&retval);
 +	    break;
 +
 +	    case SYS_fork:
@@ -263,10 +263,10 @@ index 01684c4..1bc3c28 100644
  #endif /* _LIMITS_H_ */
 diff --git a/kern/include/psyscall.h b/kern/include/psyscall.h
 new file mode 100644
-index 0000000..36ae1ad
+index 0000000..2dd045c
 --- /dev/null
 +++ b/kern/include/psyscall.h
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,81 @@
 +#ifndef _PSYSCALL_H_
 +#define _PSYSCALL_H_
 +
@@ -282,7 +282,7 @@ index 0000000..36ae1ad
 + * Declared array for pid tracking
 + */
 +extern struct process_control *process_array[PROCESS_MAX];
-+extern struct lock *fork_lock;
++extern struct lock *pid_lock;
 +/**
 +* Structure for Process Control
 +*/
@@ -301,8 +301,10 @@ index 0000000..36ae1ad
 +
 +	//Semaphore to synchronize the the exit status
 +	struct semaphore *process_sem;
-+	//struct lock *process_lock;
-+	//struct cv *process_cv;
++
++	bool waitstatus;
++	struct lock *process_lock;
++	struct cv *process_cv;
 +};
 +
 +struct child_process{
@@ -326,7 +328,12 @@ index 0000000..36ae1ad
 +sys___exit(int);
 +
 +int
-+sys___waitpid(int ,userptr_t ,int );
++sys___waitpid(int ,userptr_t ,int ,int32_t *retval);
++
++int
++sys___kwaitpid(int ,int *status,int ,int32_t *retval);
++
++
 +
 +void
 +deallocate_pid(pid_t processid);
@@ -399,6 +406,27 @@ index befd3d8..e46cf78 100644
  struct trapframe; /* from <machine/trapframe.h> */
  
  /*
+diff --git a/kern/include/test.h b/kern/include/test.h
+index 240d583..5f9d0fa 100644
+--- a/kern/include/test.h
++++ b/kern/include/test.h
+@@ -105,8 +105,15 @@ int mallocstress(int, char **);
+ int nettest(int, char **);
+ 
+ /* Routine for running a user-level program. */
+-int runprogram(char *progname);
++//int runprogram(char *progname);
++/**
++ * Author: Pratham Malik
++ * adding arguments parameter for runprogram
++ */
++
++int runprogram(char *progname, char **);
+ 
++//End of additions by PM
+ /* Kernel menu system. */
+ void menu(char *argstr);
+ 
 diff --git a/kern/include/thread.h b/kern/include/thread.h
 index 86706ca..5c24d00 100644
 --- a/kern/include/thread.h
@@ -498,6 +526,73 @@ index be4c4b8..68723b7 100644
  	/* Probe and initialize devices. Interrupts should come on. */
  	kprintf("Device probe...\n");
  	KASSERT(curthread->t_curspl > 0);
+diff --git a/kern/startup/menu.c b/kern/startup/menu.c
+index 6c71551..5d1ec8c 100644
+--- a/kern/startup/menu.c
++++ b/kern/startup/menu.c
+@@ -100,13 +100,15 @@ cmd_progthread(void *ptr, unsigned long nargs)
+ 
+ 	strcpy(progname, args[0]);
+ 
+-	result = runprogram(progname);
++	result = runprogram(progname,args);
+ 	if (result) {
+ 		kprintf("Running program %s failed: %s\n", args[0],
+ 			strerror(result));
+ 		return;
+ 	}
+ 
++	sys___exit(0);
++
+ 	/* NOTREACHED: runprogram only returns on error. */
+ }
+ 
+@@ -133,15 +135,44 @@ common_prog(int nargs, char **args)
+ 		"synchronization-problems kernel.\n");
+ #endif
+ 
++	/**
++	 * Author: Pratham Malik
++	 * Changing thread
++	 */
++
++	struct thread *childthr;
++	pid_t child_pid;
++
+ 	result = thread_fork(args[0] /* thread name */,
+ 			cmd_progthread /* thread function */,
+ 			args /* thread arg */, nargs /* thread arg */,
+-			NULL);
++			&childthr);
+ 	if (result) {
+ 		kprintf("thread_fork failed: %s\n", strerror(result));
+ 		return result;
+ 	}
+ 
++	child_pid = childthr->t_pid;
++
++
++ 	int status;
++	int32_t retval;
++
++//	status = kmalloc(sizeof(userptr_t));
++	result = sys___kwaitpid(child_pid,&status,0,&retval);
++	if(result)
++		return result;
++
++
++
++
++/*
++	result = thread_fork(args[0]  thread name ,
++			cmd_progthread  thread function ,
++			args  thread arg , nargs  thread arg ,
++			NULL);
++*/
++
+ 	return 0;
+ }
+ 
 diff --git a/kern/synchprobs/problems.c b/kern/synchprobs/problems.c
 index 81d2f0e..ccf4ee2 100644
 --- a/kern/synchprobs/problems.c
@@ -1348,10 +1443,10 @@ index 0000000..ac74f6f
 +}
 diff --git a/kern/syscall/psyscall.c b/kern/syscall/psyscall.c
 new file mode 100644
-index 0000000..3a7315b
+index 0000000..e1531ac
 --- /dev/null
 +++ b/kern/syscall/psyscall.c
-@@ -0,0 +1,350 @@
+@@ -0,0 +1,532 @@
 +
 +#include <types.h>
 +#include <clock.h>
@@ -1378,6 +1473,8 @@ index 0000000..3a7315b
 +void
 +initialize_pid(struct thread *thr,pid_t processid)
 +{
++	if(curthread!=NULL)
++		lock_acquire(pid_lock);
 +	struct process_control *p_array;
 +
 +	p_array=kmalloc(sizeof(struct process_control));
@@ -1389,24 +1486,18 @@ index 0000000..3a7315b
 +	p_array->exit_code=-1;
 +	p_array->exit_status=false;
 +	p_array->mythread=thr;
-+
++	p_array->waitstatus=false;
 +	p_array->process_sem = sem_create(thr->t_name,0);
 +
-+
-+	/*if(processid>4)
-+	{
-+		p_array->process_lock=lock_create(thr->t_name);
-+		p_array->process_cv = cv_create(thr->t_name);
-+	}
-+	else
-+	{
-+		p_array->process_lock=NULL;
-+		p_array->process_cv = NULL;
-+	}*/
++	//Create the lock and CV
++	p_array->process_lock=lock_create(thr->t_name);
++	p_array->process_cv = cv_create(thr->t_name);
 +
 +	//Copy back into the thread
 +	process_array[processid]=p_array;
 +
++	if(curthread!=NULL)
++		lock_release(pid_lock);
 +
 +}
 +
@@ -1424,25 +1515,81 @@ index 0000000..3a7315b
 +	return -1;
 +}
 +
++void
++deallocate_pid(pid_t processid)
++{
++
++	if(process_array[processid]==0 || process_array[processid]==NULL)
++	{
++		//Do Nothing
++	}
++	else
++	{
++		pid_t parent_id = process_array[processid]->parent_id;
++		if(parent_id>PID_MIN)
++		{
++				int counter=0;
++				for(counter=3;counter<__OPEN_MAX;counter++)
++				{
++					if(curthread->file_table[counter]!=0)
++					{
++						process_array[parent_id]->mythread->file_table[counter]->reference_count--;
++					}
++					else
++					{
++							//newthread->file_table[counter]=0;
++					}
++				}
++		}
++
++		sem_destroy(process_array[processid]->process_sem);
++		lock_destroy(process_array[processid]->process_lock);
++		cv_destroy(process_array[processid]->process_cv);
++		kfree(process_array[processid]);
++		process_array[processid]=0;
++
++	}
++}
++
 +int
 +sys___exit(int exit_code)
 +{
-+
 +	//Check whether the process calling exit has no children?
 +
 +	pid_t pid_process=curthread->t_pid;
 +
-+	//Store the exit code passed in the argument
-+	process_array[pid_process]->exit_code= _MKWAIT_EXIT(exit_code);
-+
-+	//Indicate Exit by calling changing the exit status in the process array
-+	process_array[pid_process]->exit_status=true;
-+
 +	//Check whether to indicate exit by calling cv_broadcast as well
 +//	cv_broadcast(process_array[pid_process]->process_cv,process_array[pid_process]->process_lock);
 +
-+	//Now using a semaphore and V when the thread exits -- Approach Discarded
-+	V(process_array[pid_process]->process_sem);
++	//Now using a semaphore and V when the thread exits
++	if(process_array[pid_process]->waitstatus==true)
++	{
++		lock_acquire(process_array[pid_process]->process_lock);
++
++		//Indicate Exit by calling changing the exit status in the process array
++		process_array[pid_process]->exit_code= _MKWAIT_EXIT(exit_code);
++
++		process_array[pid_process]->exit_status=true;
++
++		cv_signal(process_array[pid_process]->process_cv,process_array[pid_process]->process_lock);
++
++		lock_release(process_array[pid_process]->process_lock);
++
++	}
++		//V(process_array[pid_process]->process_sem);
++	else
++	{
++		lock_acquire(process_array[pid_process]->process_lock);
++
++		//Store the exit code passed in the argument
++		process_array[pid_process]->exit_code= _MKWAIT_EXIT(exit_code);
++
++		//Indicate Exit by calling changing the exit status in the process array
++		process_array[pid_process]->exit_status=true;
++
++		lock_release(process_array[pid_process]->process_lock);
++
++	}
 +
 +	thread_exit();
 +
@@ -1457,22 +1604,24 @@ index 0000000..3a7315b
 +}
 +
 +int
-+sys___waitpid(int processid,userptr_t  status,int options)
++sys___waitpid(int processid,userptr_t  status,int options, int32_t *retval)
 +{
-+	pid_t pid_process= (int32_t) processid;
++	//pid_t pid_process= (int32_t) processid;
 +	int exit_code;
 +	int result;
 +
-+	userptr_t user_status;
++//	userptr_t user_status;
 +
++/*
 +	if(processid<PID_MIN)
 +		return ESRCH;
++*/
 +
 +	if( options!=0){
 +		return EINVAL;
 +	}
 +	//Check whether the pid exists
-+	if(process_array[processid]==0 ||process_array[processid]==NULL)
++	if(processid<PID_MIN || process_array[processid]==0 ||process_array[processid]==NULL)
 +	{
 +		return ESRCH;
 +	}
@@ -1494,44 +1643,138 @@ index 0000000..3a7315b
 +	if(!(curthread->t_pid == process_array[processid]->parent_id))
 +		return ECHILD;
 +
-+	//Check if the return status is not invalid by copyin
-+	result = copyin(status,user_status,sizeof(status));
-+	if(result)
-+		return result;
 +
-+	P(process_array[pid_process]->process_sem);
-+	exit_code = process_array[pid_process]->exit_code;
++	if(process_array[processid]->exit_status==true)
++	{
++		lock_acquire(process_array[processid]->process_lock);
 +
-+	//Copyout the status
-+	result = copyout((void *)exit_code,user_status,sizeof(user_status));
-+	if(result)
++		exit_code = process_array[processid]->exit_code;
++
++		lock_release(process_array[processid]->process_lock);
++
++		result = copyout(&exit_code,status,sizeof(userptr_t));
++		if(result)
 +			return result;
 +
-+	status=user_status;
-+	//Destroy Child's Process Structure - Call deallocate_pid
-+	deallocate_pid(pid_process);
++		//Destroy Child's Process Structure - Call deallocate_pid
 +
-+	return 0;
++		*retval = processid;
++		deallocate_pid(processid);
++
++	}
++	else if(process_array[processid]->exit_status==false)
++	{
++		lock_acquire(process_array[processid]->process_lock);
++
++		process_array[processid]->waitstatus=true;
++		cv_wait(process_array[processid]->process_cv,process_array[processid]->process_lock);
++
++		//P(process_array[pid_process]->process_sem);
++		exit_code = process_array[processid]->exit_code;
++
++		lock_release(process_array[processid]->process_lock);
++
++		result = copyout(&exit_code,status,sizeof(userptr_t));
++			if(result)
++					return result;
++
++		//Destroy Child's Process Structure - Call deallocate_pid
++
++		*retval = processid;
++		deallocate_pid(processid);
++	}
++
++		return 0;
 +}
 +
-+void
-+deallocate_pid(pid_t processid)
++int
++sys___kwaitpid(int processid,int *status,int options, int32_t *retval)
 +{
++	//pid_t pid_process= (int32_t) processid;
++	int exit_code;
++//	int result;
 +
-+	if(process_array[processid]==0 || process_array[processid]==NULL)
-+	{
-+		//Do Nothing
-+	}
-+	else
-+	{
-+		/*lock_destroy(process_array[processid]->process_lock);
-+		cv_destroy(process_array[processid]->process_cv);
++//	userptr_t user_status;
++
++/*
++	if(processid<PID_MIN)
++		return ESRCH;
 +*/
-+		sem_destroy(process_array[processid]->process_sem);
-+		kfree(process_array[processid]);
-+		process_array[processid]=0;
++
++	if( options!=0){
++		return EINVAL;
 +	}
++	//Check whether the pid exists
++	if(processid<PID_MIN || process_array[processid]==0 ||process_array[processid]==NULL)
++	{
++		return ESRCH;
++	}
++
++	//CHeck if the status is not NULL
++	if(status==NULL)
++		return EFAULT;
++
++	if (processid < PID_MIN)
++		return EINVAL;
++
++	if(processid > PID_MAX)
++		return ESRCH;
++
++	if (processid == curthread->t_pid)
++		return ECHILD;
++
++	//TODO::Check whether the pid exists in your child list -- Complete after fork - Completed below
++	if(!(curthread->t_pid == process_array[processid]->parent_id))
++		return ECHILD;
++
++
++	if(process_array[processid]->exit_status==true)
++	{
++		lock_acquire(process_array[processid]->process_lock);
++
++		exit_code = process_array[processid]->exit_code;
++
++		lock_release(process_array[processid]->process_lock);
++
++		status = &exit_code;
++
++	/*	result = copyout(&exit_code,status,sizeof(userptr_t));
++		if(result)
++			return result;
++*/
++		//Destroy Child's Process Structure - Call deallocate_pid
++
++		*retval = processid;
++		deallocate_pid(processid);
++
++	}
++	else if(process_array[processid]->exit_status==false)
++	{
++		lock_acquire(process_array[processid]->process_lock);
++
++		process_array[processid]->waitstatus=true;
++		cv_wait(process_array[processid]->process_cv,process_array[processid]->process_lock);
++
++		//P(process_array[pid_process]->process_sem);
++		exit_code = process_array[processid]->exit_code;
++
++		lock_release(process_array[processid]->process_lock);
++
++		status = &exit_code;
++
++		/*result = copyout(&exit_code,status,sizeof(userptr_t));
++			if(result)
++					return result;
++*/
++		//Destroy Child's Process Structure - Call deallocate_pid
++
++		*retval = processid;
++		deallocate_pid(processid);
++	}
++
++		return 0;
 +}
++
 +
 +
 +/*
@@ -1555,8 +1798,8 @@ index 0000000..3a7315b
 +	if(parent_tf==NULL)
 +		return ENOMEM;
 +
-+	parent_tf=tf;
-+
++	memcpy(parent_tf,tf,sizeof(struct trapframe));
++//	parent_tf=tf;
 +
 +	pid_t current_pid = curthread->t_pid;
 +
@@ -1564,8 +1807,18 @@ index 0000000..3a7315b
 +	parent_pid = (unsigned long) current_pid;
 +
 +	result = thread_fork(curthread->t_name,enter_process,parent_tf,parent_pid,&child);
-+
 +	if(result){
++	//	kfree(parent_tf);
++		if(process_array[child->t_pid] == 0 || process_array[child->t_pid] == NULL)
++		{
++			//Do Nothing
++		}
++		else
++		{
++			kfree(process_array[child->t_pid]);
++		}
++
++	//
 +		return result;
 +	}
 +
@@ -1578,7 +1831,7 @@ index 0000000..3a7315b
 +enter_process(void *tf,unsigned long addr)
 +{
 +	struct trapframe *childframe,child_tf;
-+//	struct addrspace *childspace;
++	struct addrspace *childspace;
 +	if(tf!=NULL)
 +	{
 +
@@ -1587,11 +1840,9 @@ index 0000000..3a7315b
 +		//copy the trapframe info now into the child_tf
 +
 +
-+	/*	childframe->tf_a3 =0;
-+		childframe->tf_v0 =0;
-+		childframe->tf_epc +=4;
-+*/
-+		child_tf = *childframe;
++	//	child_tf = *childframe;
++
++		memcpy(&child_tf,tf,sizeof(struct trapframe));
 +
 +		child_tf.tf_a3=0;
 +		child_tf.tf_v0=0;
@@ -1604,120 +1855,246 @@ index 0000000..3a7315b
 +			process_array[curthread->t_pid]->parent_id=parentid;
 +
 +		if(!(curthread->t_addrspace==NULL))
-+			as_activate(curthread->t_addrspace);
-+
++		{
++			childspace = curthread->t_addrspace;
++			as_activate(childspace);
++		}
 +		mips_usermode(&child_tf);
 +	}
 +}
 +
++
 +int
-+sys___execv(userptr_t p_name,userptr_t argument)
++sys___execv(userptr_t p_name,userptr_t ar)
 +{
 +	struct vnode *p_vnode;
 +	vaddr_t entrypoint, stackptr;
-+	int result;
 +
-+	//Check for EFAULT
-+	if(p_name==NULL || argument == NULL)
++	int result;
++	int counter;
++	size_t copied_length;
++
++	char *kname; // name of the program copied in kernel
++//	char *pname; //	name of pname
++
++//	pname = (char *) p_name;
++
++/*
++	if(p_name==NULL)
 +		return EFAULT;
 +
-+	char **arguments = (char **) argument;
++	if(ar==NULL)
++		return EFAULT;
 +
-+	//Convert the program name from userptr to char ptr
-+//	p_name = (char *) p_name;
++	if(pname == '\0')
++		return ENOEXEC;
++*/
 +
-+	//Create a variable to store the program name
-+	char * program_name = (char *) kmalloc(sizeof(p_name));
-+	size_t actual_length;
-+	result = copyinstr((const_userptr_t) p_name,program_name,sizeof(p_name),&actual_length);
-+	if(result)
-+		return result;
-+
-+
-+	//Create a variable to store all the arguments in array
-+	char **saved_args;
-+	//Allocate space for saved_args
-+	saved_args= (char **) kmalloc(sizeof(arguments));
-+	if(saved_args==NULL)
++	kname = (char *) kmalloc(sizeof(p_name));
++	if(kname==NULL)
 +		return ENOMEM;
 +
-+	//Copyin the arguments all the arguments
-+	result = copyin((const_userptr_t) arguments,saved_args,sizeof(arguments));
++//	result = copyin(p_name,kname,sizeof(p_name));
++	result = copyinstr(p_name,kname,sizeof(p_name),&copied_length);
 +	if(result)
++	{
++
++		kfree(kname);
 +		return result;
++	}
 +
-+		/* Open the file. */
-+		//char *p_name = (char *) program_name;
-+		result = vfs_open(program_name, O_RDONLY, 0, &p_vnode);
-+		if (result) {
-+			return result;
-+		}
-+
-+		/* We should be a new thread. */
-+		KASSERT(curthread->t_addrspace == NULL);
-+
-+		/* Create a new address space. */
-+		curthread->t_addrspace = as_create();
-+		if (curthread->t_addrspace==NULL) {
-+			vfs_close(p_vnode);
-+			return ENOMEM;
-+		}
-+
-+
-+		/* Activate it. */
-+		as_activate(curthread->t_addrspace);
-+
-+		/* Load the executable. */
-+		result = load_elf(p_vnode, &entrypoint);
-+		if (result) {
-+			/* thread_exit destroys curthread->t_addrspace */
-+			vfs_close(p_vnode);
-+			return result;
-+		}
-+
-+		/* Done with the file now. */
-+		vfs_close(p_vnode);
-+
-+		/* Define the user stack in the address space */
-+		result = as_define_stack(curthread->t_addrspace, &stackptr);
-+		if (result) {
-+			/* thread_exit destroys curthread->t_addrspace */
-+			return result;
-+		}
-+		int result1=100;
-+		kprintf("Inside run program");
-+		result1= intialize_file_desc_tbl(curthread->file_table);
-+		if( intialize_file_desc_tbl(curthread->file_table)){
-+			kprintf("Error");
-+			return result1;
-+		}
-+		/* Warp to user mode. */
-+		enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
-+				  stackptr, entrypoint);
-+
-+		/* enter_new_process does not return. */
-+		panic("enter_new_process returned\n");
++/*
++	if(copied_length == 1)
++	{
++		kfree(kname);
 +		return EINVAL;
++	}
++*/
++
++	//Copy into the kernel buffer
++	char **user_args = (char **) ar;
++
++	char **kernel_buffer = kmalloc(sizeof(char *));;
++	if(kernel_buffer==NULL)
++	{
++		kfree(kname);
++		return ENOMEM;
++	}
++
++	counter =0;
++	while(user_args[counter] != NULL)
++	{
++		char *temp = user_args[counter];
++
++		result = copyinstr((const_userptr_t)temp,kernel_buffer[counter],sizeof(temp),&copied_length);
++		if(result)
++		{
++			kfree(kname);
++			kfree(kernel_buffer);
++			return result;
++		}
++		counter++;
++
++	}
++
++	/* Open the file. */
++	result = vfs_open(kname, O_RDONLY, 0, &p_vnode);
++	if (result) {
++		return result;
++	}
++
++	/* We should be a new thread. */
++	KASSERT(curthread->t_addrspace == NULL);
++
++	/* Create a new address space. */
++	curthread->t_addrspace = as_create();
++	if (curthread->t_addrspace==NULL) {
++		vfs_close(p_vnode);
++		return ENOMEM;
++	}
++
++	/* Activate it. */
++	as_activate(curthread->t_addrspace);
++
++	/* Load the executable. */
++	result = load_elf(p_vnode, &entrypoint);
++	if (result) {
++		/* thread_exit destroys curthread->t_addrspace */
++		vfs_close(p_vnode);
++		return result;
++	}
++
++	/* Done with the file now. */
++	vfs_close(p_vnode);
++
++	/* Define the user stack in the address space */
++	result = as_define_stack(curthread->t_addrspace, &stackptr);
++	if (result) {
++		/* thread_exit destroys curthread->t_addrspace */
++		return result;
++	}
++
++
 +	return 0;
 +}
 +
 +
 diff --git a/kern/syscall/runprogram.c b/kern/syscall/runprogram.c
-index a6f45c8..4287504 100644
+index a6f45c8..a2ada5e 100644
 --- a/kern/syscall/runprogram.c
 +++ b/kern/syscall/runprogram.c
-@@ -44,8 +44,9 @@
+@@ -44,20 +44,109 @@
  #include <vfs.h>
  #include <syscall.h>
  #include <test.h>
--
 +#include <file_syscall.h>
+ 
++#include <copyinout.h>
  /*
 + *
   * Load program "progname" and start running it in usermode.
   * Does not return except on error.
   *
-@@ -74,6 +75,7 @@ runprogram(char *progname)
+  * Calls vfs_open on progname and thus may destroy it.
+  */
+ int
+-runprogram(char *progname)
++runprogram(char *progname,char **argss)
+ {
+ 	struct vnode *v;
+ 	vaddr_t entrypoint, stackptr;
+ 	int result;
+ 
++	if(argss==NULL)
++	{
++		//Do Nothing
++
++	}
++	else
++	{
++		char **user_args;
++		user_args = kmalloc(sizeof(char **));
++
++		user_args[0]=argss[0];
++
++	}
++/*
++
++	*
++	 * Author:Pratham Malik
++	 * adding arguments to stack
++
++	int counter;
++	char **user_args;
++	char *temp;
++	char *final;
++	int string_length;
++	int new_length;
++	int i;
++
++	counter=0;
++	string_length=0;
++
++
++	user_args = kmalloc(sizeof(char **));
++
++	while(argss[counter] != NULL)
++	{
++		temp = kstrdup(argss[counter]);
++		kprintf("The argument is %s",temp);
++
++		string_length = strlen(temp);
++		if((string_length) % 4 == 0)
++		{
++			user_args[counter] = kmalloc(sizeof(string_length));
++//			result= copyout(temp,(userptr_t) user_args[counter],sizeof(string_length));
++//			if(result)
++//				return result;
++
++			user_args[counter] = temp;
++		}
++		else
++		{
++
++			new_length = string_length;
++			while(new_length%4 !=0)
++			{
++				new_length++;
++			}
++
++			final=temp;
++
++			for(i=string_length;i<=new_length;i++)
++			{
++				final[i]= '\0';
++			}
++
++			user_args[counter] = kmalloc(sizeof(new_length));
++			user_args[counter] = final;
++//			result = copyout(final,(userptr_t) user_args[counter],sizeof(new_length));
++				if(result)
++					return result;
++
++
++		}
++		counter++;
++	}
++
++
++	char **userspacearg = kmalloc(sizeof(user_args));
++	result = copyout(user_args,(userptr_t) userspacearg,sizeof(userspacearg));
++	if(result)
++		return result;
++
++
++	//End of additions by PM
++
++
++*/
+ 	/* Open the file. */
+ 	result = vfs_open(progname, O_RDONLY, 0, &v);
+ 	if (result) {
+@@ -74,6 +163,7 @@ runprogram(char *progname)
  		return ENOMEM;
  	}
  
@@ -1725,11 +2102,17 @@ index a6f45c8..4287504 100644
  	/* Activate it. */
  	as_activate(curthread->t_addrspace);
  
-@@ -94,13 +96,31 @@ runprogram(char *progname)
- 		/* thread_exit destroys curthread->t_addrspace */
+@@ -95,12 +185,32 @@ runprogram(char *progname)
  		return result;
  	}
--
+ 
++
++
++
++/**
++ * Author: Mohit Arora
++ * Initialing the file table
++ */
 +	int result1=100;
 +	kprintf("Inside run program");
 +	result1= intialize_file_desc_tbl(curthread->file_table);
@@ -1737,19 +2120,13 @@ index a6f45c8..4287504 100644
 +		kprintf("Error");
 +		return result1;
 +	}
++
++//End of Additions by MA
++
  	/* Warp to user mode. */
  	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
  			  stackptr, entrypoint);
  	
-+	/*
-+		 * Added By Mohit
-+		 *
-+		 * Started for file table initialization
-+		 */
-+
-+		/*
-+		 * Ended
-+		 */
 +
  	/* enter_new_process does not return. */
  	panic("enter_new_process returned\n");
@@ -2085,7 +2462,7 @@ index 9a7468c..f27b083 100644
 +
 +
 diff --git a/kern/thread/thread.c b/kern/thread/thread.c
-index e7235e3..ace7d98 100644
+index e7235e3..af81457 100644
 --- a/kern/thread/thread.c
 +++ b/kern/thread/thread.c
 @@ -47,9 +47,32 @@
@@ -2099,7 +2476,7 @@ index e7235e3..ace7d98 100644
 + */
 +#include <psyscall.h>
 +struct process_control *process_array[PROCESS_MAX];
-+struct lock *fork_lock;
++struct lock *pid_lock;
 +
 +//End of Additions by PM
 +
@@ -2187,7 +2564,7 @@ index e7235e3..ace7d98 100644
  }
  
  /*
-@@ -350,12 +404,27 @@ thread_shutdown(void)
+@@ -350,12 +404,30 @@ thread_shutdown(void)
  void
  thread_bootstrap(void)
  {
@@ -2208,6 +2585,9 @@ index e7235e3..ace7d98 100644
 +	{
 +		process_array[count]=0;
 +	}
++
++	//Create the pid_lock
++	pid_lock = lock_create("pid_lock");
 +	//End of Addition by PM
 +
 +
@@ -2215,7 +2595,7 @@ index e7235e3..ace7d98 100644
  	 * Create the cpu structure for the bootup CPU, the one we're
  	 * currently running on. Assume the hardware number is 0; that
  	 * might be updated later by mainbus-type code. This also
-@@ -382,6 +451,8 @@ thread_bootstrap(void)
+@@ -382,6 +454,8 @@ thread_bootstrap(void)
  	curcpu->c_curthread = curthread;
  
  	/* Done */
@@ -2224,7 +2604,7 @@ index e7235e3..ace7d98 100644
  }
  
  /*
-@@ -436,6 +507,7 @@ static
+@@ -436,6 +510,7 @@ static
  void
  thread_make_runnable(struct thread *target, bool already_have_lock)
  {
@@ -2232,7 +2612,7 @@ index e7235e3..ace7d98 100644
  	struct cpu *targetcpu;
  	bool isidle;
  
-@@ -483,6 +555,7 @@ thread_fork(const char *name,
+@@ -483,6 +558,7 @@ thread_fork(const char *name,
  	    struct thread **ret)
  {
  	struct thread *newthread;
@@ -2240,7 +2620,13 @@ index e7235e3..ace7d98 100644
  
  	newthread = thread_create(name);
  	if (newthread == NULL) {
-@@ -498,6 +571,31 @@ thread_fork(const char *name,
+@@ -493,11 +569,46 @@ thread_fork(const char *name,
+ 	newthread->t_stack = kmalloc(STACK_SIZE);
+ 	if (newthread->t_stack == NULL) {
+ 		thread_destroy(newthread);
++	//	kfree(process_array[newthread->t_pid]);
+ 		return ENOMEM;
+ 	}
  	thread_checkstack_init(newthread);
  
  	/*
@@ -2251,28 +2637,37 @@ index e7235e3..ace7d98 100644
 +
 +	if(curthread->t_addrspace!=NULL)
 +	{
-+		childspace = kmalloc(sizeof(struct addrspace));
++		/*childspace = kmalloc(sizeof(struct addrspace));
 +		if(childspace == NULL)
++		{
++			kfree(process_array[newthread->t_pid]);
 +			return ENOMEM;
-+
++		}
++*/
 +		result = as_copy(curthread->t_addrspace,&childspace);
 +		if(result)
++		{
++			//kfree(process_array[newthread->t_pid]);
 +			return result;
 +
++		}
++
++//		memcpy(newthread->t_addrspace,childspace,sizeof(childspace));
 +		newthread->t_addrspace = childspace;
 +
 +		if(newthread->t_addrspace==NULL)
++		{
++			//kfree(process_array[newthread->t_pid]);
 +			return ENOMEM;
++		}
 +	}
-+
-+
 +	//End of additions by PM
 +
 +	/*
  	 * Now we clone various fields from the parent thread.
  	 */
  
-@@ -513,6 +611,34 @@ thread_fork(const char *name,
+@@ -513,6 +624,34 @@ thread_fork(const char *name,
  		newthread->t_cwd = curthread->t_cwd;
  	}
  
@@ -2285,7 +2680,7 @@ index e7235e3..ace7d98 100644
 +	{
 +		if(curthread->file_table[counter]!=0)
 +		{
-+			newthread->file_table[counter]=kmalloc(sizeof(struct file_descriptor));
++			//newthread->file_table[counter]=kmalloc(sizeof(struct file_descriptor));
 +			newthread->file_table[counter]=curthread->file_table[counter];
 +			if(counter>2)
 +				curthread->file_table[counter]->reference_count++;
@@ -2307,7 +2702,7 @@ index e7235e3..ace7d98 100644
  	/*
  	 * Because new threads come out holding the cpu runqueue lock
  	 * (see notes at bottom of thread_switch), we need to account
-@@ -523,8 +649,6 @@ thread_fork(const char *name,
+@@ -523,8 +662,6 @@ thread_fork(const char *name,
  	/* Set up the switchframe so entrypoint() gets called */
  	switchframe_init(newthread, entrypoint, data1, data2);
  
@@ -2316,7 +2711,7 @@ index e7235e3..ace7d98 100644
  
  	/*
  	 * Return new thread structure if it's wanted. Note that using
-@@ -536,6 +660,10 @@ thread_fork(const char *name,
+@@ -536,6 +673,10 @@ thread_fork(const char *name,
  		*ret = newthread;
  	}
  
@@ -2327,7 +2722,7 @@ index e7235e3..ace7d98 100644
  	return 0;
  }
  
-@@ -800,6 +928,30 @@ thread_exit(void)
+@@ -800,6 +941,16 @@ thread_exit(void)
  		cur->t_cwd = NULL;
  	}
  
@@ -2337,28 +2732,14 @@ index e7235e3..ace7d98 100644
 +	 * and decreasing the reference count for parent thread
 +	 */
 +
-+	pid_t parent_id = process_array[cur->t_pid]->parent_id;
-+	if(parent_id>PID_MIN)
-+	{
-+		int counter=0;
-+			for(counter=3;counter<__OPEN_MAX;counter++)
-+			{
-+				if(cur->file_table[counter]!=0)
-+				{
-+					process_array[parent_id]->mythread->file_table[counter]->reference_count--;
-+				}else
-+				{
-+					//newthread->file_table[counter]=0;
-+				}
-+			}
-+	}
++
 +
 +	//End of additions by PM
 +
  	/* VM fields */
  	if (cur->t_addrspace) {
  		/*
-@@ -1070,7 +1222,8 @@ wchan_wakeone(struct wchan *wc)
+@@ -1070,7 +1221,8 @@ wchan_wakeone(struct wchan *wc)
  		/* Nobody was sleeping. */
  		return;
  	}
@@ -2368,7 +2749,7 @@ index e7235e3..ace7d98 100644
  	thread_make_runnable(target, false);
  }
  
-@@ -1108,6 +1261,8 @@ wchan_wakeall(struct wchan *wc)
+@@ -1108,6 +1260,8 @@ wchan_wakeall(struct wchan *wc)
  		thread_make_runnable(target, false);
  	}
  
@@ -2379,10 +2760,10 @@ index e7235e3..ace7d98 100644
  
 diff --git a/submit.patch b/submit.patch
 new file mode 100644
-index 0000000..c8f614f
+index 0000000..c6f5265
 --- /dev/null
 +++ b/submit.patch
-@@ -0,0 +1,2311 @@
+@@ -0,0 +1,2718 @@
 +diff --git a/kern/arch/mips/conf/ldscript b/kern/arch/mips/conf/ldscript
 +index cbe86ac..ba44f70 100644
 +--- a/kern/arch/mips/conf/ldscript
@@ -2433,7 +2814,7 @@ index 0000000..c8f614f
 + 
 + /*
 +diff --git a/kern/arch/mips/syscall/syscall.c b/kern/arch/mips/syscall/syscall.c
-+index 0f773bd..3e637c6 100644
++index 0f773bd..1117b51 100644
 +--- a/kern/arch/mips/syscall/syscall.c
 ++++ b/kern/arch/mips/syscall/syscall.c
 +@@ -35,6 +35,7 @@
@@ -2522,7 +2903,7 @@ index 0000000..c8f614f
 ++	    break;
 ++
 ++	    case SYS_waitpid:
-++	    err = sys___waitpid(tf->tf_a0,(userptr_t)tf->tf_a1,tf->tf_a2);
+++	    err = sys___waitpid(tf->tf_a0,(userptr_t)tf->tf_a1,tf->tf_a2,&retval);
 ++	    break;
 ++
 ++	    case SYS_fork:
@@ -2648,10 +3029,10 @@ index 0000000..c8f614f
 + #endif /* _LIMITS_H_ */
 +diff --git a/kern/include/psyscall.h b/kern/include/psyscall.h
 +new file mode 100644
-+index 0000000..36ae1ad
++index 0000000..2dd045c
 +--- /dev/null
 ++++ b/kern/include/psyscall.h
-+@@ -0,0 +1,74 @@
++@@ -0,0 +1,81 @@
 ++#ifndef _PSYSCALL_H_
 ++#define _PSYSCALL_H_
 ++
@@ -2667,7 +3048,7 @@ index 0000000..c8f614f
 ++ * Declared array for pid tracking
 ++ */
 ++extern struct process_control *process_array[PROCESS_MAX];
-++extern struct lock *fork_lock;
+++extern struct lock *pid_lock;
 ++/**
 ++* Structure for Process Control
 ++*/
@@ -2686,8 +3067,10 @@ index 0000000..c8f614f
 ++
 ++	//Semaphore to synchronize the the exit status
 ++	struct semaphore *process_sem;
-++	//struct lock *process_lock;
-++	//struct cv *process_cv;
+++
+++	bool waitstatus;
+++	struct lock *process_lock;
+++	struct cv *process_cv;
 ++};
 ++
 ++struct child_process{
@@ -2711,7 +3094,12 @@ index 0000000..c8f614f
 ++sys___exit(int);
 ++
 ++int
-++sys___waitpid(int ,userptr_t ,int );
+++sys___waitpid(int ,userptr_t ,int ,int32_t *retval);
+++
+++int
+++sys___kwaitpid(int ,int *status,int ,int32_t *retval);
+++
+++
 ++
 ++void
 ++deallocate_pid(pid_t processid);
@@ -2784,6 +3172,27 @@ index 0000000..c8f614f
 + struct trapframe; /* from <machine/trapframe.h> */
 + 
 + /*
++diff --git a/kern/include/test.h b/kern/include/test.h
++index 240d583..5f9d0fa 100644
++--- a/kern/include/test.h
+++++ b/kern/include/test.h
++@@ -105,8 +105,15 @@ int mallocstress(int, char **);
++ int nettest(int, char **);
++ 
++ /* Routine for running a user-level program. */
++-int runprogram(char *progname);
+++//int runprogram(char *progname);
+++/**
+++ * Author: Pratham Malik
+++ * adding arguments parameter for runprogram
+++ */
+++
+++int runprogram(char *progname, char **);
++ 
+++//End of additions by PM
++ /* Kernel menu system. */
++ void menu(char *argstr);
++ 
 +diff --git a/kern/include/thread.h b/kern/include/thread.h
 +index 86706ca..5c24d00 100644
 +--- a/kern/include/thread.h
@@ -2883,6 +3292,73 @@ index 0000000..c8f614f
 + 	/* Probe and initialize devices. Interrupts should come on. */
 + 	kprintf("Device probe...\n");
 + 	KASSERT(curthread->t_curspl > 0);
++diff --git a/kern/startup/menu.c b/kern/startup/menu.c
++index 6c71551..5d1ec8c 100644
++--- a/kern/startup/menu.c
+++++ b/kern/startup/menu.c
++@@ -100,13 +100,15 @@ cmd_progthread(void *ptr, unsigned long nargs)
++ 
++ 	strcpy(progname, args[0]);
++ 
++-	result = runprogram(progname);
+++	result = runprogram(progname,args);
++ 	if (result) {
++ 		kprintf("Running program %s failed: %s\n", args[0],
++ 			strerror(result));
++ 		return;
++ 	}
++ 
+++	sys___exit(0);
+++
++ 	/* NOTREACHED: runprogram only returns on error. */
++ }
++ 
++@@ -133,15 +135,44 @@ common_prog(int nargs, char **args)
++ 		"synchronization-problems kernel.\n");
++ #endif
++ 
+++	/**
+++	 * Author: Pratham Malik
+++	 * Changing thread
+++	 */
+++
+++	struct thread *childthr;
+++	pid_t child_pid;
+++
++ 	result = thread_fork(args[0] /* thread name */,
++ 			cmd_progthread /* thread function */,
++ 			args /* thread arg */, nargs /* thread arg */,
++-			NULL);
+++			&childthr);
++ 	if (result) {
++ 		kprintf("thread_fork failed: %s\n", strerror(result));
++ 		return result;
++ 	}
++ 
+++	child_pid = childthr->t_pid;
+++
+++
+++ 	int status;
+++	int32_t retval;
+++
+++//	status = kmalloc(sizeof(userptr_t));
+++	result = sys___kwaitpid(child_pid,&status,0,&retval);
+++	if(result)
+++		return result;
+++
+++
+++
+++
+++/*
+++	result = thread_fork(args[0]  thread name ,
+++			cmd_progthread  thread function ,
+++			args  thread arg , nargs  thread arg ,
+++			NULL);
+++*/
+++
++ 	return 0;
++ }
++ 
 +diff --git a/kern/synchprobs/problems.c b/kern/synchprobs/problems.c
 +index 81d2f0e..ccf4ee2 100644
 +--- a/kern/synchprobs/problems.c
@@ -3733,10 +4209,10 @@ index 0000000..c8f614f
 ++}
 +diff --git a/kern/syscall/psyscall.c b/kern/syscall/psyscall.c
 +new file mode 100644
-+index 0000000..3a7315b
++index 0000000..e1531ac
 +--- /dev/null
 ++++ b/kern/syscall/psyscall.c
-+@@ -0,0 +1,350 @@
++@@ -0,0 +1,532 @@
 ++
 ++#include <types.h>
 ++#include <clock.h>
@@ -3763,6 +4239,8 @@ index 0000000..c8f614f
 ++void
 ++initialize_pid(struct thread *thr,pid_t processid)
 ++{
+++	if(curthread!=NULL)
+++		lock_acquire(pid_lock);
 ++	struct process_control *p_array;
 ++
 ++	p_array=kmalloc(sizeof(struct process_control));
@@ -3774,24 +4252,18 @@ index 0000000..c8f614f
 ++	p_array->exit_code=-1;
 ++	p_array->exit_status=false;
 ++	p_array->mythread=thr;
-++
+++	p_array->waitstatus=false;
 ++	p_array->process_sem = sem_create(thr->t_name,0);
 ++
-++
-++	/*if(processid>4)
-++	{
-++		p_array->process_lock=lock_create(thr->t_name);
-++		p_array->process_cv = cv_create(thr->t_name);
-++	}
-++	else
-++	{
-++		p_array->process_lock=NULL;
-++		p_array->process_cv = NULL;
-++	}*/
+++	//Create the lock and CV
+++	p_array->process_lock=lock_create(thr->t_name);
+++	p_array->process_cv = cv_create(thr->t_name);
 ++
 ++	//Copy back into the thread
 ++	process_array[processid]=p_array;
 ++
+++	if(curthread!=NULL)
+++		lock_release(pid_lock);
 ++
 ++}
 ++
@@ -3809,25 +4281,81 @@ index 0000000..c8f614f
 ++	return -1;
 ++}
 ++
+++void
+++deallocate_pid(pid_t processid)
+++{
+++
+++	if(process_array[processid]==0 || process_array[processid]==NULL)
+++	{
+++		//Do Nothing
+++	}
+++	else
+++	{
+++		pid_t parent_id = process_array[processid]->parent_id;
+++		if(parent_id>PID_MIN)
+++		{
+++				int counter=0;
+++				for(counter=3;counter<__OPEN_MAX;counter++)
+++				{
+++					if(curthread->file_table[counter]!=0)
+++					{
+++						process_array[parent_id]->mythread->file_table[counter]->reference_count--;
+++					}
+++					else
+++					{
+++							//newthread->file_table[counter]=0;
+++					}
+++				}
+++		}
+++
+++		sem_destroy(process_array[processid]->process_sem);
+++		lock_destroy(process_array[processid]->process_lock);
+++		cv_destroy(process_array[processid]->process_cv);
+++		kfree(process_array[processid]);
+++		process_array[processid]=0;
+++
+++	}
+++}
+++
 ++int
 ++sys___exit(int exit_code)
 ++{
-++
 ++	//Check whether the process calling exit has no children?
 ++
 ++	pid_t pid_process=curthread->t_pid;
 ++
-++	//Store the exit code passed in the argument
-++	process_array[pid_process]->exit_code= _MKWAIT_EXIT(exit_code);
-++
-++	//Indicate Exit by calling changing the exit status in the process array
-++	process_array[pid_process]->exit_status=true;
-++
 ++	//Check whether to indicate exit by calling cv_broadcast as well
 ++//	cv_broadcast(process_array[pid_process]->process_cv,process_array[pid_process]->process_lock);
 ++
-++	//Now using a semaphore and V when the thread exits -- Approach Discarded
-++	V(process_array[pid_process]->process_sem);
+++	//Now using a semaphore and V when the thread exits
+++	if(process_array[pid_process]->waitstatus==true)
+++	{
+++		lock_acquire(process_array[pid_process]->process_lock);
+++
+++		//Indicate Exit by calling changing the exit status in the process array
+++		process_array[pid_process]->exit_code= _MKWAIT_EXIT(exit_code);
+++
+++		process_array[pid_process]->exit_status=true;
+++
+++		cv_signal(process_array[pid_process]->process_cv,process_array[pid_process]->process_lock);
+++
+++		lock_release(process_array[pid_process]->process_lock);
+++
+++	}
+++		//V(process_array[pid_process]->process_sem);
+++	else
+++	{
+++		lock_acquire(process_array[pid_process]->process_lock);
+++
+++		//Store the exit code passed in the argument
+++		process_array[pid_process]->exit_code= _MKWAIT_EXIT(exit_code);
+++
+++		//Indicate Exit by calling changing the exit status in the process array
+++		process_array[pid_process]->exit_status=true;
+++
+++		lock_release(process_array[pid_process]->process_lock);
+++
+++	}
 ++
 ++	thread_exit();
 ++
@@ -3842,22 +4370,24 @@ index 0000000..c8f614f
 ++}
 ++
 ++int
-++sys___waitpid(int processid,userptr_t  status,int options)
+++sys___waitpid(int processid,userptr_t  status,int options, int32_t *retval)
 ++{
-++	pid_t pid_process= (int32_t) processid;
+++	//pid_t pid_process= (int32_t) processid;
 ++	int exit_code;
 ++	int result;
 ++
-++	userptr_t user_status;
+++//	userptr_t user_status;
 ++
+++/*
 ++	if(processid<PID_MIN)
 ++		return ESRCH;
+++*/
 ++
 ++	if( options!=0){
 ++		return EINVAL;
 ++	}
 ++	//Check whether the pid exists
-++	if(process_array[processid]==0 ||process_array[processid]==NULL)
+++	if(processid<PID_MIN || process_array[processid]==0 ||process_array[processid]==NULL)
 ++	{
 ++		return ESRCH;
 ++	}
@@ -3879,44 +4409,138 @@ index 0000000..c8f614f
 ++	if(!(curthread->t_pid == process_array[processid]->parent_id))
 ++		return ECHILD;
 ++
-++	//Check if the return status is not invalid by copyin
-++	result = copyin(status,user_status,sizeof(status));
-++	if(result)
-++		return result;
 ++
-++	P(process_array[pid_process]->process_sem);
-++	exit_code = process_array[pid_process]->exit_code;
+++	if(process_array[processid]->exit_status==true)
+++	{
+++		lock_acquire(process_array[processid]->process_lock);
 ++
-++	//Copyout the status
-++	result = copyout((void *)exit_code,user_status,sizeof(user_status));
-++	if(result)
+++		exit_code = process_array[processid]->exit_code;
+++
+++		lock_release(process_array[processid]->process_lock);
+++
+++		result = copyout(&exit_code,status,sizeof(userptr_t));
+++		if(result)
 ++			return result;
 ++
-++	status=user_status;
-++	//Destroy Child's Process Structure - Call deallocate_pid
-++	deallocate_pid(pid_process);
+++		//Destroy Child's Process Structure - Call deallocate_pid
 ++
-++	return 0;
+++		*retval = processid;
+++		deallocate_pid(processid);
+++
+++	}
+++	else if(process_array[processid]->exit_status==false)
+++	{
+++		lock_acquire(process_array[processid]->process_lock);
+++
+++		process_array[processid]->waitstatus=true;
+++		cv_wait(process_array[processid]->process_cv,process_array[processid]->process_lock);
+++
+++		//P(process_array[pid_process]->process_sem);
+++		exit_code = process_array[processid]->exit_code;
+++
+++		lock_release(process_array[processid]->process_lock);
+++
+++		result = copyout(&exit_code,status,sizeof(userptr_t));
+++			if(result)
+++					return result;
+++
+++		//Destroy Child's Process Structure - Call deallocate_pid
+++
+++		*retval = processid;
+++		deallocate_pid(processid);
+++	}
+++
+++		return 0;
 ++}
 ++
-++void
-++deallocate_pid(pid_t processid)
+++int
+++sys___kwaitpid(int processid,int *status,int options, int32_t *retval)
 ++{
+++	//pid_t pid_process= (int32_t) processid;
+++	int exit_code;
+++//	int result;
 ++
-++	if(process_array[processid]==0 || process_array[processid]==NULL)
-++	{
-++		//Do Nothing
-++	}
-++	else
-++	{
-++		/*lock_destroy(process_array[processid]->process_lock);
-++		cv_destroy(process_array[processid]->process_cv);
+++//	userptr_t user_status;
+++
+++/*
+++	if(processid<PID_MIN)
+++		return ESRCH;
 ++*/
-++		sem_destroy(process_array[processid]->process_sem);
-++		kfree(process_array[processid]);
-++		process_array[processid]=0;
+++
+++	if( options!=0){
+++		return EINVAL;
 ++	}
+++	//Check whether the pid exists
+++	if(processid<PID_MIN || process_array[processid]==0 ||process_array[processid]==NULL)
+++	{
+++		return ESRCH;
+++	}
+++
+++	//CHeck if the status is not NULL
+++	if(status==NULL)
+++		return EFAULT;
+++
+++	if (processid < PID_MIN)
+++		return EINVAL;
+++
+++	if(processid > PID_MAX)
+++		return ESRCH;
+++
+++	if (processid == curthread->t_pid)
+++		return ECHILD;
+++
+++	//TODO::Check whether the pid exists in your child list -- Complete after fork - Completed below
+++	if(!(curthread->t_pid == process_array[processid]->parent_id))
+++		return ECHILD;
+++
+++
+++	if(process_array[processid]->exit_status==true)
+++	{
+++		lock_acquire(process_array[processid]->process_lock);
+++
+++		exit_code = process_array[processid]->exit_code;
+++
+++		lock_release(process_array[processid]->process_lock);
+++
+++		status = &exit_code;
+++
+++	/*	result = copyout(&exit_code,status,sizeof(userptr_t));
+++		if(result)
+++			return result;
+++*/
+++		//Destroy Child's Process Structure - Call deallocate_pid
+++
+++		*retval = processid;
+++		deallocate_pid(processid);
+++
+++	}
+++	else if(process_array[processid]->exit_status==false)
+++	{
+++		lock_acquire(process_array[processid]->process_lock);
+++
+++		process_array[processid]->waitstatus=true;
+++		cv_wait(process_array[processid]->process_cv,process_array[processid]->process_lock);
+++
+++		//P(process_array[pid_process]->process_sem);
+++		exit_code = process_array[processid]->exit_code;
+++
+++		lock_release(process_array[processid]->process_lock);
+++
+++		status = &exit_code;
+++
+++		/*result = copyout(&exit_code,status,sizeof(userptr_t));
+++			if(result)
+++					return result;
+++*/
+++		//Destroy Child's Process Structure - Call deallocate_pid
+++
+++		*retval = processid;
+++		deallocate_pid(processid);
+++	}
+++
+++		return 0;
 ++}
+++
 ++
 ++
 ++/*
@@ -3940,8 +4564,8 @@ index 0000000..c8f614f
 ++	if(parent_tf==NULL)
 ++		return ENOMEM;
 ++
-++	parent_tf=tf;
-++
+++	memcpy(parent_tf,tf,sizeof(struct trapframe));
+++//	parent_tf=tf;
 ++
 ++	pid_t current_pid = curthread->t_pid;
 ++
@@ -3949,8 +4573,18 @@ index 0000000..c8f614f
 ++	parent_pid = (unsigned long) current_pid;
 ++
 ++	result = thread_fork(curthread->t_name,enter_process,parent_tf,parent_pid,&child);
-++
 ++	if(result){
+++	//	kfree(parent_tf);
+++		if(process_array[child->t_pid] == 0 || process_array[child->t_pid] == NULL)
+++		{
+++			//Do Nothing
+++		}
+++		else
+++		{
+++			kfree(process_array[child->t_pid]);
+++		}
+++
+++	//
 ++		return result;
 ++	}
 ++
@@ -3963,7 +4597,7 @@ index 0000000..c8f614f
 ++enter_process(void *tf,unsigned long addr)
 ++{
 ++	struct trapframe *childframe,child_tf;
-++//	struct addrspace *childspace;
+++	struct addrspace *childspace;
 ++	if(tf!=NULL)
 ++	{
 ++
@@ -3972,11 +4606,9 @@ index 0000000..c8f614f
 ++		//copy the trapframe info now into the child_tf
 ++
 ++
-++	/*	childframe->tf_a3 =0;
-++		childframe->tf_v0 =0;
-++		childframe->tf_epc +=4;
-++*/
-++		child_tf = *childframe;
+++	//	child_tf = *childframe;
+++
+++		memcpy(&child_tf,tf,sizeof(struct trapframe));
 ++
 ++		child_tf.tf_a3=0;
 ++		child_tf.tf_v0=0;
@@ -3989,120 +4621,246 @@ index 0000000..c8f614f
 ++			process_array[curthread->t_pid]->parent_id=parentid;
 ++
 ++		if(!(curthread->t_addrspace==NULL))
-++			as_activate(curthread->t_addrspace);
-++
+++		{
+++			childspace = curthread->t_addrspace;
+++			as_activate(childspace);
+++		}
 ++		mips_usermode(&child_tf);
 ++	}
 ++}
 ++
+++
 ++int
-++sys___execv(userptr_t p_name,userptr_t argument)
+++sys___execv(userptr_t p_name,userptr_t ar)
 ++{
 ++	struct vnode *p_vnode;
 ++	vaddr_t entrypoint, stackptr;
-++	int result;
 ++
-++	//Check for EFAULT
-++	if(p_name==NULL || argument == NULL)
+++	int result;
+++	int counter;
+++	size_t copied_length;
+++
+++	char *kname; // name of the program copied in kernel
+++//	char *pname; //	name of pname
+++
+++//	pname = (char *) p_name;
+++
+++/*
+++	if(p_name==NULL)
 ++		return EFAULT;
 ++
-++	char **arguments = (char **) argument;
+++	if(ar==NULL)
+++		return EFAULT;
 ++
-++	//Convert the program name from userptr to char ptr
-++//	p_name = (char *) p_name;
+++	if(pname == '\0')
+++		return ENOEXEC;
+++*/
 ++
-++	//Create a variable to store the program name
-++	char * program_name = (char *) kmalloc(sizeof(p_name));
-++	size_t actual_length;
-++	result = copyinstr((const_userptr_t) p_name,program_name,sizeof(p_name),&actual_length);
-++	if(result)
-++		return result;
-++
-++
-++	//Create a variable to store all the arguments in array
-++	char **saved_args;
-++	//Allocate space for saved_args
-++	saved_args= (char **) kmalloc(sizeof(arguments));
-++	if(saved_args==NULL)
+++	kname = (char *) kmalloc(sizeof(p_name));
+++	if(kname==NULL)
 ++		return ENOMEM;
 ++
-++	//Copyin the arguments all the arguments
-++	result = copyin((const_userptr_t) arguments,saved_args,sizeof(arguments));
+++//	result = copyin(p_name,kname,sizeof(p_name));
+++	result = copyinstr(p_name,kname,sizeof(p_name),&copied_length);
 ++	if(result)
+++	{
+++
+++		kfree(kname);
 ++		return result;
+++	}
 ++
-++		/* Open the file. */
-++		//char *p_name = (char *) program_name;
-++		result = vfs_open(program_name, O_RDONLY, 0, &p_vnode);
-++		if (result) {
-++			return result;
-++		}
-++
-++		/* We should be a new thread. */
-++		KASSERT(curthread->t_addrspace == NULL);
-++
-++		/* Create a new address space. */
-++		curthread->t_addrspace = as_create();
-++		if (curthread->t_addrspace==NULL) {
-++			vfs_close(p_vnode);
-++			return ENOMEM;
-++		}
-++
-++
-++		/* Activate it. */
-++		as_activate(curthread->t_addrspace);
-++
-++		/* Load the executable. */
-++		result = load_elf(p_vnode, &entrypoint);
-++		if (result) {
-++			/* thread_exit destroys curthread->t_addrspace */
-++			vfs_close(p_vnode);
-++			return result;
-++		}
-++
-++		/* Done with the file now. */
-++		vfs_close(p_vnode);
-++
-++		/* Define the user stack in the address space */
-++		result = as_define_stack(curthread->t_addrspace, &stackptr);
-++		if (result) {
-++			/* thread_exit destroys curthread->t_addrspace */
-++			return result;
-++		}
-++		int result1=100;
-++		kprintf("Inside run program");
-++		result1= intialize_file_desc_tbl(curthread->file_table);
-++		if( intialize_file_desc_tbl(curthread->file_table)){
-++			kprintf("Error");
-++			return result1;
-++		}
-++		/* Warp to user mode. */
-++		enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
-++				  stackptr, entrypoint);
-++
-++		/* enter_new_process does not return. */
-++		panic("enter_new_process returned\n");
+++/*
+++	if(copied_length == 1)
+++	{
+++		kfree(kname);
 ++		return EINVAL;
+++	}
+++*/
+++
+++	//Copy into the kernel buffer
+++	char **user_args = (char **) ar;
+++
+++	char **kernel_buffer = kmalloc(sizeof(char *));;
+++	if(kernel_buffer==NULL)
+++	{
+++		kfree(kname);
+++		return ENOMEM;
+++	}
+++
+++	counter =0;
+++	while(user_args[counter] != NULL)
+++	{
+++		char *temp = user_args[counter];
+++
+++		result = copyinstr((const_userptr_t)temp,kernel_buffer[counter],sizeof(temp),&copied_length);
+++		if(result)
+++		{
+++			kfree(kname);
+++			kfree(kernel_buffer);
+++			return result;
+++		}
+++		counter++;
+++
+++	}
+++
+++	/* Open the file. */
+++	result = vfs_open(kname, O_RDONLY, 0, &p_vnode);
+++	if (result) {
+++		return result;
+++	}
+++
+++	/* We should be a new thread. */
+++	KASSERT(curthread->t_addrspace == NULL);
+++
+++	/* Create a new address space. */
+++	curthread->t_addrspace = as_create();
+++	if (curthread->t_addrspace==NULL) {
+++		vfs_close(p_vnode);
+++		return ENOMEM;
+++	}
+++
+++	/* Activate it. */
+++	as_activate(curthread->t_addrspace);
+++
+++	/* Load the executable. */
+++	result = load_elf(p_vnode, &entrypoint);
+++	if (result) {
+++		/* thread_exit destroys curthread->t_addrspace */
+++		vfs_close(p_vnode);
+++		return result;
+++	}
+++
+++	/* Done with the file now. */
+++	vfs_close(p_vnode);
+++
+++	/* Define the user stack in the address space */
+++	result = as_define_stack(curthread->t_addrspace, &stackptr);
+++	if (result) {
+++		/* thread_exit destroys curthread->t_addrspace */
+++		return result;
+++	}
+++
+++
 ++	return 0;
 ++}
 ++
 ++
 +diff --git a/kern/syscall/runprogram.c b/kern/syscall/runprogram.c
-+index a6f45c8..4287504 100644
++index a6f45c8..a2ada5e 100644
 +--- a/kern/syscall/runprogram.c
 ++++ b/kern/syscall/runprogram.c
-+@@ -44,8 +44,9 @@
++@@ -44,20 +44,109 @@
 + #include <vfs.h>
 + #include <syscall.h>
 + #include <test.h>
-+-
 ++#include <file_syscall.h>
++ 
+++#include <copyinout.h>
 + /*
 ++ *
 +  * Load program "progname" and start running it in usermode.
 +  * Does not return except on error.
 +  *
-+@@ -74,6 +75,7 @@ runprogram(char *progname)
++  * Calls vfs_open on progname and thus may destroy it.
++  */
++ int
++-runprogram(char *progname)
+++runprogram(char *progname,char **argss)
++ {
++ 	struct vnode *v;
++ 	vaddr_t entrypoint, stackptr;
++ 	int result;
++ 
+++	if(argss==NULL)
+++	{
+++		//Do Nothing
+++
+++	}
+++	else
+++	{
+++		char **user_args;
+++		user_args = kmalloc(sizeof(char **));
+++
+++		user_args[0]=argss[0];
+++
+++	}
+++/*
+++
+++	*
+++	 * Author:Pratham Malik
+++	 * adding arguments to stack
+++
+++	int counter;
+++	char **user_args;
+++	char *temp;
+++	char *final;
+++	int string_length;
+++	int new_length;
+++	int i;
+++
+++	counter=0;
+++	string_length=0;
+++
+++
+++	user_args = kmalloc(sizeof(char **));
+++
+++	while(argss[counter] != NULL)
+++	{
+++		temp = kstrdup(argss[counter]);
+++		kprintf("The argument is %s",temp);
+++
+++		string_length = strlen(temp);
+++		if((string_length) % 4 == 0)
+++		{
+++			user_args[counter] = kmalloc(sizeof(string_length));
+++//			result= copyout(temp,(userptr_t) user_args[counter],sizeof(string_length));
+++//			if(result)
+++//				return result;
+++
+++			user_args[counter] = temp;
+++		}
+++		else
+++		{
+++
+++			new_length = string_length;
+++			while(new_length%4 !=0)
+++			{
+++				new_length++;
+++			}
+++
+++			final=temp;
+++
+++			for(i=string_length;i<=new_length;i++)
+++			{
+++				final[i]= '\0';
+++			}
+++
+++			user_args[counter] = kmalloc(sizeof(new_length));
+++			user_args[counter] = final;
+++//			result = copyout(final,(userptr_t) user_args[counter],sizeof(new_length));
+++				if(result)
+++					return result;
+++
+++
+++		}
+++		counter++;
+++	}
+++
+++
+++	char **userspacearg = kmalloc(sizeof(user_args));
+++	result = copyout(user_args,(userptr_t) userspacearg,sizeof(userspacearg));
+++	if(result)
+++		return result;
+++
+++
+++	//End of additions by PM
+++
+++
+++*/
++ 	/* Open the file. */
++ 	result = vfs_open(progname, O_RDONLY, 0, &v);
++ 	if (result) {
++@@ -74,6 +163,7 @@ runprogram(char *progname)
 + 		return ENOMEM;
 + 	}
 + 
@@ -4110,11 +4868,17 @@ index 0000000..c8f614f
 + 	/* Activate it. */
 + 	as_activate(curthread->t_addrspace);
 + 
-+@@ -94,13 +96,31 @@ runprogram(char *progname)
-+ 		/* thread_exit destroys curthread->t_addrspace */
++@@ -95,12 +185,32 @@ runprogram(char *progname)
 + 		return result;
 + 	}
-+-
++ 
+++
+++
+++
+++/**
+++ * Author: Mohit Arora
+++ * Initialing the file table
+++ */
 ++	int result1=100;
 ++	kprintf("Inside run program");
 ++	result1= intialize_file_desc_tbl(curthread->file_table);
@@ -4122,19 +4886,13 @@ index 0000000..c8f614f
 ++		kprintf("Error");
 ++		return result1;
 ++	}
+++
+++//End of Additions by MA
+++
 + 	/* Warp to user mode. */
 + 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
 + 			  stackptr, entrypoint);
 + 	
-++	/*
-++		 * Added By Mohit
-++		 *
-++		 * Started for file table initialization
-++		 */
-++
-++		/*
-++		 * Ended
-++		 */
 ++
 + 	/* enter_new_process does not return. */
 + 	panic("enter_new_process returned\n");
@@ -4470,7 +5228,7 @@ index 0000000..c8f614f
 ++
 ++
 +diff --git a/kern/thread/thread.c b/kern/thread/thread.c
-+index e7235e3..ace7d98 100644
++index e7235e3..af81457 100644
 +--- a/kern/thread/thread.c
 ++++ b/kern/thread/thread.c
 +@@ -47,9 +47,32 @@
@@ -4484,7 +5242,7 @@ index 0000000..c8f614f
 ++ */
 ++#include <psyscall.h>
 ++struct process_control *process_array[PROCESS_MAX];
-++struct lock *fork_lock;
+++struct lock *pid_lock;
 ++
 ++//End of Additions by PM
 ++
@@ -4572,7 +5330,7 @@ index 0000000..c8f614f
 + }
 + 
 + /*
-+@@ -350,12 +404,27 @@ thread_shutdown(void)
++@@ -350,12 +404,30 @@ thread_shutdown(void)
 + void
 + thread_bootstrap(void)
 + {
@@ -4593,6 +5351,9 @@ index 0000000..c8f614f
 ++	{
 ++		process_array[count]=0;
 ++	}
+++
+++	//Create the pid_lock
+++	pid_lock = lock_create("pid_lock");
 ++	//End of Addition by PM
 ++
 ++
@@ -4600,7 +5361,7 @@ index 0000000..c8f614f
 + 	 * Create the cpu structure for the bootup CPU, the one we're
 + 	 * currently running on. Assume the hardware number is 0; that
 + 	 * might be updated later by mainbus-type code. This also
-+@@ -382,6 +451,8 @@ thread_bootstrap(void)
++@@ -382,6 +454,8 @@ thread_bootstrap(void)
 + 	curcpu->c_curthread = curthread;
 + 
 + 	/* Done */
@@ -4609,7 +5370,7 @@ index 0000000..c8f614f
 + }
 + 
 + /*
-+@@ -436,6 +507,7 @@ static
++@@ -436,6 +510,7 @@ static
 + void
 + thread_make_runnable(struct thread *target, bool already_have_lock)
 + {
@@ -4617,7 +5378,7 @@ index 0000000..c8f614f
 + 	struct cpu *targetcpu;
 + 	bool isidle;
 + 
-+@@ -483,6 +555,7 @@ thread_fork(const char *name,
++@@ -483,6 +558,7 @@ thread_fork(const char *name,
 + 	    struct thread **ret)
 + {
 + 	struct thread *newthread;
@@ -4625,7 +5386,13 @@ index 0000000..c8f614f
 + 
 + 	newthread = thread_create(name);
 + 	if (newthread == NULL) {
-+@@ -498,6 +571,31 @@ thread_fork(const char *name,
++@@ -493,11 +569,46 @@ thread_fork(const char *name,
++ 	newthread->t_stack = kmalloc(STACK_SIZE);
++ 	if (newthread->t_stack == NULL) {
++ 		thread_destroy(newthread);
+++	//	kfree(process_array[newthread->t_pid]);
++ 		return ENOMEM;
++ 	}
 + 	thread_checkstack_init(newthread);
 + 
 + 	/*
@@ -4636,28 +5403,37 @@ index 0000000..c8f614f
 ++
 ++	if(curthread->t_addrspace!=NULL)
 ++	{
-++		childspace = kmalloc(sizeof(struct addrspace));
+++		/*childspace = kmalloc(sizeof(struct addrspace));
 ++		if(childspace == NULL)
+++		{
+++			kfree(process_array[newthread->t_pid]);
 ++			return ENOMEM;
-++
+++		}
+++*/
 ++		result = as_copy(curthread->t_addrspace,&childspace);
 ++		if(result)
+++		{
+++			//kfree(process_array[newthread->t_pid]);
 ++			return result;
 ++
+++		}
+++
+++//		memcpy(newthread->t_addrspace,childspace,sizeof(childspace));
 ++		newthread->t_addrspace = childspace;
 ++
 ++		if(newthread->t_addrspace==NULL)
+++		{
+++			//kfree(process_array[newthread->t_pid]);
 ++			return ENOMEM;
+++		}
 ++	}
-++
-++
 ++	//End of additions by PM
 ++
 ++	/*
 + 	 * Now we clone various fields from the parent thread.
 + 	 */
 + 
-+@@ -513,6 +611,34 @@ thread_fork(const char *name,
++@@ -513,6 +624,34 @@ thread_fork(const char *name,
 + 		newthread->t_cwd = curthread->t_cwd;
 + 	}
 + 
@@ -4670,7 +5446,7 @@ index 0000000..c8f614f
 ++	{
 ++		if(curthread->file_table[counter]!=0)
 ++		{
-++			newthread->file_table[counter]=kmalloc(sizeof(struct file_descriptor));
+++			//newthread->file_table[counter]=kmalloc(sizeof(struct file_descriptor));
 ++			newthread->file_table[counter]=curthread->file_table[counter];
 ++			if(counter>2)
 ++				curthread->file_table[counter]->reference_count++;
@@ -4692,8 +5468,21 @@ index 0000000..c8f614f
 + 	/*
 + 	 * Because new threads come out holding the cpu runqueue lock
 + 	 * (see notes at bottom of thread_switch), we need to account
-+@@ -523,8 +649,6 @@ thread_fork(const char *name,
++@@ -523,8 +662,6 @@ thread_fork(const char *name,
 + 	/* Set up the switchframe so entrypoint() gets called */
++ 	switchframe_init(newthread, entrypoint, data1, data2);
++ 
++-	/* Lock the current cpu's run queue and make the new thread runnable */
++-	thread_make_runnable(newthread, false);
++ 
++ 	/*
++ 	 * Return new thread structure if it's wanted. Note that using
++@@ -536,6 +673,10 @@ thread_fork(const char *name,
++ 		*ret = newthread;
++ 	}
++ 
+++	/*
+\ No newline at end of file
 diff --git a/typescript b/typescript
 new file mode 100644
 index 0000000..368336e
@@ -5026,58 +5815,15 @@ index 0000000..368336e
 +exit
 +
 +Script done on Thu 12 Feb 2015 10:29:24 PM EST
-diff --git a/user/lib/libc/unix/err.c b/user/lib/libc/unix/err.c
-index a4992d1..f6f00aa 100644
---- a/user/lib/libc/unix/err.c
-+++ b/user/lib/libc/unix/err.c
-@@ -99,8 +99,8 @@ __printerr(int use_errno, const char *fmt, va_list ap)
- 	}
- 
- 	/* print the program name */
--	__senderrstr(prog);
--	__senderrstr(": ");
-+	/*__senderrstr(prog);
-+	__senderrstr(": ");*/
- 
- 	/* process the printf format and args */
- 	__vprintf(__senderr, NULL, fmt, ap);
-diff --git a/user/testbin/badcall/bad_waitpid.c b/user/testbin/badcall/bad_waitpid.c
-index 809c68c..16ebb89 100644
---- a/user/testbin/badcall/bad_waitpid.c
-+++ b/user/testbin/badcall/bad_waitpid.c
-@@ -246,7 +246,7 @@ wait_siblings(void)
- 		return;
- 	}
- 	if (rv != (int)sizeof(pids)) {
--		warnx("UH-OH: write error on %s: short count", TESTFILE);
-+		warnx("UH-OH: write error on %s: short count ::rv is %d and sizeof pids is %u", TESTFILE,rv,sizeof(pids));
- 		/* abandon child procs :( */
- 		return;
- 	}
 diff --git a/user/testbin/fileonlytest/fileonlytest.c b/user/testbin/fileonlytest/fileonlytest.c
-index b807ff6..d3439b6 100644
+index b807ff6..d756e52 100644
 --- a/user/testbin/fileonlytest/fileonlytest.c
 +++ b/user/testbin/fileonlytest/fileonlytest.c
-@@ -160,8 +160,9 @@ main(int argc, char **argv)
+@@ -160,6 +160,7 @@ main(int argc, char **argv)
  		
  	// 23 Mar 2012 : GWA : FIXME : Spin until exit() works.
  	
-+	exit(0);
++	_exit(0);
  	printf("Spinning in case exit() doesn't work.\n");
--	while (1) {};
-+//	while (1) {};
+ 	while (1) {};
  
- 	return 0;
- }
-diff --git a/user/testbin/forktest/forktest.c b/user/testbin/forktest/forktest.c
-index 50d72b0..fdf6e16 100644
---- a/user/testbin/forktest/forktest.c
-+++ b/user/testbin/forktest/forktest.c
-@@ -75,7 +75,6 @@ check(void)
- 	int i;
- 
- 	mypid = getpid();
--	
- 	/* Make sure each fork has its own address space. */
- 	for (i=0; i<800; i++) {
- 		volatile int seenpid;

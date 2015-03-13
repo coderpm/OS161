@@ -94,22 +94,20 @@ deallocate_pid(pid_t processid)
 		}
 
 		sem_destroy(process_array[processid]->process_sem);
+		lock_destroy(process_array[processid]->process_lock);
+		cv_destroy(process_array[processid]->process_cv);
 		kfree(process_array[processid]);
 		process_array[processid]=0;
+
 	}
 }
 
 int
 sys___exit(int exit_code)
 {
-
 	//Check whether the process calling exit has no children?
 
 	pid_t pid_process=curthread->t_pid;
-
-	//Store the exit code passed in the argument
-	process_array[pid_process]->exit_code= _MKWAIT_EXIT(exit_code);
-
 
 	//Check whether to indicate exit by calling cv_broadcast as well
 //	cv_broadcast(process_array[pid_process]->process_cv,process_array[pid_process]->process_lock);
@@ -118,19 +116,24 @@ sys___exit(int exit_code)
 	if(process_array[pid_process]->waitstatus==true)
 	{
 		lock_acquire(process_array[pid_process]->process_lock);
+
 		//Indicate Exit by calling changing the exit status in the process array
+		process_array[pid_process]->exit_code= _MKWAIT_EXIT(exit_code);
+
 		process_array[pid_process]->exit_status=true;
 
 		cv_signal(process_array[pid_process]->process_cv,process_array[pid_process]->process_lock);
 
 		lock_release(process_array[pid_process]->process_lock);
 
-
 	}
 		//V(process_array[pid_process]->process_sem);
 	else
 	{
 		lock_acquire(process_array[pid_process]->process_lock);
+
+		//Store the exit code passed in the argument
+		process_array[pid_process]->exit_code= _MKWAIT_EXIT(exit_code);
 
 		//Indicate Exit by calling changing the exit status in the process array
 		process_array[pid_process]->exit_status=true;
@@ -158,7 +161,7 @@ sys___waitpid(int processid,userptr_t  status,int options, int32_t *retval)
 	int exit_code;
 	int result;
 
-	userptr_t user_status;
+//	userptr_t user_status;
 
 /*
 	if(processid<PID_MIN)
@@ -192,11 +195,6 @@ sys___waitpid(int processid,userptr_t  status,int options, int32_t *retval)
 		return ECHILD;
 
 
-	//Check if the return status is not invalid by copyin
-	result = copyin(status,user_status,sizeof(status));
-	if(result)
-		return result;
-
 	if(process_array[processid]->exit_status==true)
 	{
 		lock_acquire(process_array[processid]->process_lock);
@@ -205,7 +203,7 @@ sys___waitpid(int processid,userptr_t  status,int options, int32_t *retval)
 
 		lock_release(process_array[processid]->process_lock);
 
-		result = copyout(&exit_code,status,sizeof(user_status));
+		result = copyout(&exit_code,status,sizeof(userptr_t));
 		if(result)
 			return result;
 
@@ -213,7 +211,6 @@ sys___waitpid(int processid,userptr_t  status,int options, int32_t *retval)
 
 		*retval = processid;
 		deallocate_pid(processid);
-
 
 	}
 	else if(process_array[processid]->exit_status==false)
@@ -228,7 +225,7 @@ sys___waitpid(int processid,userptr_t  status,int options, int32_t *retval)
 
 		lock_release(process_array[processid]->process_lock);
 
-		result = copyout(&exit_code,status,sizeof(user_status));
+		result = copyout(&exit_code,status,sizeof(userptr_t));
 			if(result)
 					return result;
 
@@ -241,6 +238,93 @@ sys___waitpid(int processid,userptr_t  status,int options, int32_t *retval)
 		return 0;
 }
 
+int
+sys___kwaitpid(int processid,int *status,int options, int32_t *retval)
+{
+	//pid_t pid_process= (int32_t) processid;
+	int exit_code;
+//	int result;
+
+//	userptr_t user_status;
+
+/*
+	if(processid<PID_MIN)
+		return ESRCH;
+*/
+
+	if( options!=0){
+		return EINVAL;
+	}
+	//Check whether the pid exists
+	if(processid<PID_MIN || process_array[processid]==0 ||process_array[processid]==NULL)
+	{
+		return ESRCH;
+	}
+
+	//CHeck if the status is not NULL
+	if(status==NULL)
+		return EFAULT;
+
+	if (processid < PID_MIN)
+		return EINVAL;
+
+	if(processid > PID_MAX)
+		return ESRCH;
+
+	if (processid == curthread->t_pid)
+		return ECHILD;
+
+	//TODO::Check whether the pid exists in your child list -- Complete after fork - Completed below
+	if(!(curthread->t_pid == process_array[processid]->parent_id))
+		return ECHILD;
+
+
+	if(process_array[processid]->exit_status==true)
+	{
+		lock_acquire(process_array[processid]->process_lock);
+
+		exit_code = process_array[processid]->exit_code;
+
+		lock_release(process_array[processid]->process_lock);
+
+		status = &exit_code;
+
+	/*	result = copyout(&exit_code,status,sizeof(userptr_t));
+		if(result)
+			return result;
+*/
+		//Destroy Child's Process Structure - Call deallocate_pid
+
+		*retval = processid;
+		deallocate_pid(processid);
+
+	}
+	else if(process_array[processid]->exit_status==false)
+	{
+		lock_acquire(process_array[processid]->process_lock);
+
+		process_array[processid]->waitstatus=true;
+		cv_wait(process_array[processid]->process_cv,process_array[processid]->process_lock);
+
+		//P(process_array[pid_process]->process_sem);
+		exit_code = process_array[processid]->exit_code;
+
+		lock_release(process_array[processid]->process_lock);
+
+		status = &exit_code;
+
+		/*result = copyout(&exit_code,status,sizeof(userptr_t));
+			if(result)
+					return result;
+*/
+		//Destroy Child's Process Structure - Call deallocate_pid
+
+		*retval = processid;
+		deallocate_pid(processid);
+	}
+
+		return 0;
+}
 
 
 
@@ -276,7 +360,16 @@ sys___fork(struct trapframe *tf, pid_t *returnval)
 	result = thread_fork(curthread->t_name,enter_process,parent_tf,parent_pid,&child);
 	if(result){
 	//	kfree(parent_tf);
-	//	kfree(process_array[child->t_pid]);
+		if(process_array[child->t_pid] == 0 || process_array[child->t_pid] == NULL)
+		{
+			//Do Nothing
+		}
+		else
+		{
+			kfree(process_array[child->t_pid]);
+		}
+
+	//
 		return result;
 	}
 
