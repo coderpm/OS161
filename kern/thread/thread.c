@@ -54,6 +54,7 @@
  */
 #include <psyscall.h>
 struct process_control *process_array[PROCESS_MAX];
+struct lock *pid_lock;
 
 //End of Additions by PM
 
@@ -420,6 +421,9 @@ thread_bootstrap(void)
 	{
 		process_array[count]=0;
 	}
+
+	//Create the pid_lock
+	pid_lock = lock_create("pid_lock");
 	//End of Addition by PM
 
 
@@ -554,6 +558,7 @@ thread_fork(const char *name,
 	    struct thread **ret)
 {
 	struct thread *newthread;
+	struct addrspace *childspace;
 
 	newthread = thread_create(name);
 	if (newthread == NULL) {
@@ -564,6 +569,7 @@ thread_fork(const char *name,
 	newthread->t_stack = kmalloc(STACK_SIZE);
 	if (newthread->t_stack == NULL) {
 		thread_destroy(newthread);
+		kfree(process_array[newthread->t_pid]);
 		return ENOMEM;
 	}
 	thread_checkstack_init(newthread);
@@ -572,30 +578,34 @@ thread_fork(const char *name,
 	 * Author: Pratham Malik
 	 * Copy the addrspace for the child
 	 */
-
-
 	int result;
 
 	if(curthread->t_addrspace!=NULL)
 	{
-		struct addrspace *childspace;
-		childspace = kmalloc(sizeof(struct addrspace));
+		/*childspace = kmalloc(sizeof(struct addrspace));
 		if(childspace == NULL)
+		{
+			kfree(process_array[newthread->t_pid]);
 			return ENOMEM;
-
+		}
+*/
 		result = as_copy(curthread->t_addrspace,&childspace);
 		if(result)
+		{
+			kfree(process_array[newthread->t_pid]);
 			return result;
 
-//		childsp = *childspace;
+		}
+
+//		memcpy(newthread->t_addrspace,childspace,sizeof(childspace));
 		newthread->t_addrspace = childspace;
+
 		if(newthread->t_addrspace==NULL)
+		{
+			kfree(process_array[newthread->t_pid]);
 			return ENOMEM;
+		}
 	}
-
-
-
-
 	//End of additions by PM
 
 	/*
@@ -623,7 +633,7 @@ thread_fork(const char *name,
 	{
 		if(curthread->file_table[counter]!=0)
 		{
-			newthread->file_table[counter]=kmalloc(sizeof(struct file_descriptor));
+			//newthread->file_table[counter]=kmalloc(sizeof(struct file_descriptor));
 			newthread->file_table[counter]=curthread->file_table[counter];
 			if(counter>2)
 				curthread->file_table[counter]->reference_count++;
@@ -640,6 +650,8 @@ thread_fork(const char *name,
 	process_array[child_id]->parent_id = parent_id;
 
 	//End by PM
+
+
 	/*
 	 * Because new threads come out holding the cpu runqueue lock
 	 * (see notes at bottom of thread_switch), we need to account
@@ -660,8 +672,6 @@ thread_fork(const char *name,
 	if (ret != NULL) {
 		*ret = newthread;
 	}
-
-
 
 	/* Lock the current cpu's run queue and make the new thread runnable */
 	thread_make_runnable(newthread, false);
@@ -937,21 +947,7 @@ thread_exit(void)
 	 * and decreasing the reference count for parent thread
 	 */
 
-	pid_t parent_id = process_array[cur->t_pid]->parent_id;
-	if(parent_id>PID_MIN)
-	{
-		int counter=0;
-			for(counter=3;counter<__OPEN_MAX;counter++)
-			{
-				if(cur->file_table[counter]!=0)
-				{
-					process_array[parent_id]->mythread->file_table[counter]->reference_count--;
-				}else
-				{
-					//newthread->file_table[counter]=0;
-				}
-			}
-	}
+
 
 	//End of additions by PM
 

@@ -24,6 +24,8 @@
 void
 initialize_pid(struct thread *thr,pid_t processid)
 {
+	if(curthread!=NULL)
+		lock_acquire(pid_lock);
 	struct process_control *p_array;
 
 	p_array=kmalloc(sizeof(struct process_control));
@@ -35,24 +37,18 @@ initialize_pid(struct thread *thr,pid_t processid)
 	p_array->exit_code=-1;
 	p_array->exit_status=false;
 	p_array->mythread=thr;
-
+	p_array->waitstatus=false;
 	p_array->process_sem = sem_create(thr->t_name,0);
 
-
-	/*if(processid>4)
-	{
-		p_array->process_lock=lock_create(thr->t_name);
-		p_array->process_cv = cv_create(thr->t_name);
-	}
-	else
-	{
-		p_array->process_lock=NULL;
-		p_array->process_cv = NULL;
-	}*/
+	//Create the lock and CV
+	p_array->process_lock=lock_create(thr->t_name);
+	p_array->process_cv = cv_create(thr->t_name);
 
 	//Copy back into the thread
 	process_array[processid]=p_array;
 
+	if(curthread!=NULL)
+		lock_release(pid_lock);
 
 }
 
@@ -70,6 +66,39 @@ allocate_pid(void)
 	return -1;
 }
 
+void
+deallocate_pid(pid_t processid)
+{
+
+	if(process_array[processid]==0 || process_array[processid]==NULL)
+	{
+		//Do Nothing
+	}
+	else
+	{
+		pid_t parent_id = process_array[processid]->parent_id;
+		if(parent_id>PID_MIN)
+		{
+				int counter=0;
+				for(counter=3;counter<__OPEN_MAX;counter++)
+				{
+					if(curthread->file_table[counter]!=0)
+					{
+						process_array[parent_id]->mythread->file_table[counter]->reference_count--;
+					}
+					else
+					{
+							//newthread->file_table[counter]=0;
+					}
+				}
+		}
+
+		sem_destroy(process_array[processid]->process_sem);
+		kfree(process_array[processid]);
+		process_array[processid]=0;
+	}
+}
+
 int
 sys___exit(int exit_code)
 {
@@ -81,14 +110,34 @@ sys___exit(int exit_code)
 	//Store the exit code passed in the argument
 	process_array[pid_process]->exit_code= _MKWAIT_EXIT(exit_code);
 
-	//Indicate Exit by calling changing the exit status in the process array
-	process_array[pid_process]->exit_status=true;
 
 	//Check whether to indicate exit by calling cv_broadcast as well
 //	cv_broadcast(process_array[pid_process]->process_cv,process_array[pid_process]->process_lock);
 
-	//Now using a semaphore and V when the thread exits -- Approach Discarded
-	V(process_array[pid_process]->process_sem);
+	//Now using a semaphore and V when the thread exits
+	if(process_array[pid_process]->waitstatus==true)
+	{
+		lock_acquire(process_array[pid_process]->process_lock);
+		//Indicate Exit by calling changing the exit status in the process array
+		process_array[pid_process]->exit_status=true;
+
+		cv_signal(process_array[pid_process]->process_cv,process_array[pid_process]->process_lock);
+
+		lock_release(process_array[pid_process]->process_lock);
+
+
+	}
+		//V(process_array[pid_process]->process_sem);
+	else
+	{
+		lock_acquire(process_array[pid_process]->process_lock);
+
+		//Indicate Exit by calling changing the exit status in the process array
+		process_array[pid_process]->exit_status=true;
+
+		lock_release(process_array[pid_process]->process_lock);
+
+	}
 
 	thread_exit();
 
@@ -103,22 +152,24 @@ sys___getpid(int32_t *retval)
 }
 
 int
-sys___waitpid(int processid,userptr_t  status,int options)
+sys___waitpid(int processid,userptr_t  status,int options, int32_t *retval)
 {
-	pid_t pid_process= (int32_t) processid;
+	//pid_t pid_process= (int32_t) processid;
 	int exit_code;
 	int result;
 
 	userptr_t user_status;
 
+/*
 	if(processid<PID_MIN)
 		return ESRCH;
+*/
 
 	if( options!=0){
 		return EINVAL;
 	}
 	//Check whether the pid exists
-	if(process_array[processid]==0 ||process_array[processid]==NULL)
+	if(processid<PID_MIN || process_array[processid]==0 ||process_array[processid]==NULL)
 	{
 		return ESRCH;
 	}
@@ -140,44 +191,57 @@ sys___waitpid(int processid,userptr_t  status,int options)
 	if(!(curthread->t_pid == process_array[processid]->parent_id))
 		return ECHILD;
 
+
 	//Check if the return status is not invalid by copyin
 	result = copyin(status,user_status,sizeof(status));
 	if(result)
 		return result;
 
-	P(process_array[pid_process]->process_sem);
-	exit_code = process_array[pid_process]->exit_code;
+	if(process_array[processid]->exit_status==true)
+	{
+		lock_acquire(process_array[processid]->process_lock);
 
-	//Copyout the status
-	result = copyout((void *)exit_code,user_status,sizeof(user_status));
-	if(result)
+		exit_code = process_array[processid]->exit_code;
+
+		lock_release(process_array[processid]->process_lock);
+
+		result = copyout(&exit_code,status,sizeof(user_status));
+		if(result)
 			return result;
 
-	status=user_status;
-	//Destroy Child's Process Structure - Call deallocate_pid
-	deallocate_pid(pid_process);
+		//Destroy Child's Process Structure - Call deallocate_pid
 
-	return 0;
+		*retval = processid;
+		deallocate_pid(processid);
+
+
+	}
+//	else if(process_array[processid]->exit_status==false)
+	else{
+		lock_acquire(process_array[processid]->process_lock);
+
+		process_array[processid]->waitstatus=true;
+		cv_wait(process_array[processid]->process_cv,process_array[processid]->process_lock);
+
+		//P(process_array[pid_process]->process_sem);
+		exit_code = process_array[processid]->exit_code;
+
+		lock_release(process_array[processid]->process_lock);
+
+		result = copyout(&exit_code,status,sizeof(user_status));
+			if(result)
+					return result;
+
+		//Destroy Child's Process Structure - Call deallocate_pid
+
+		*retval = processid;
+		deallocate_pid(processid);
+	}
+
+		return 0;
 }
 
-void
-deallocate_pid(pid_t processid)
-{
 
-	if(process_array[processid]==0 || process_array[processid]==NULL)
-	{
-		//Do Nothing
-	}
-	else
-	{
-		/*lock_destroy(process_array[processid]->process_lock);
-		cv_destroy(process_array[processid]->process_cv);
-*/
-		sem_destroy(process_array[processid]->process_sem);
-		kfree(process_array[processid]);
-		process_array[processid]=0;
-	}
-}
 
 
 /*
@@ -194,29 +258,27 @@ int
 sys___fork(struct trapframe *tf, pid_t *returnval)
 {
 	int result;
-	struct sendthing *sendtochild;
 	struct thread *child;
+	struct trapframe *parent_tf;
 
-
-	sendtochild = kmalloc(sizeof(struct sendthing));
-	if(sendtochild==NULL)
+	parent_tf = kmalloc(sizeof(struct trapframe));
+	if(parent_tf==NULL)
 		return ENOMEM;
 
-	sendtochild->childtf = tf;
+	memcpy(parent_tf,tf,sizeof(struct trapframe));
+//	parent_tf=tf;
 
+	pid_t current_pid = curthread->t_pid;
 
-	sendtochild->parentaddr= curthread->t_addrspace;
+	unsigned long parent_pid;
+	parent_pid = (unsigned long) current_pid;
 
-	pid_t ada= curthread->t_pid;
-	unsigned long data;
-	data = (unsigned long) ada;
-//	long addr = (unsigned long) childspace;
-
-	result = thread_fork(curthread->t_name,enter_process,sendtochild,data,&child);
-	if(result)
+	result = thread_fork(curthread->t_name,enter_process,parent_tf,parent_pid,&child);
+	if(result){
+	//	kfree(parent_tf);
+	//	kfree(process_array[child->t_pid]);
 		return result;
-
-
+	}
 
 	*returnval = child->t_pid;
 
@@ -226,55 +288,39 @@ sys___fork(struct trapframe *tf, pid_t *returnval)
 void
 enter_process(void *tf,unsigned long addr)
 {
-
-	/*int result;
+	struct trapframe *childframe,child_tf;
 	struct addrspace *childspace;
-*/
-
-	struct sendthing *childthings;
-	//	(void)tf;
-
-	childthings = kmalloc(sizeof(struct sendthing));
-	if(childthings!=NULL)
+	if(tf!=NULL)
 	{
-		struct trapframe *temp_child,finalchild;
 
-		childthings = (struct sendthing *)tf;
-		//Create a new address space and copy the address from pointer received from the parent
+		tf = (struct trapframe *) tf;
+		childframe = tf;
+		//copy the trapframe info now into the child_tf
 
-	/*	struct addrspace *childspace;
-		int result;
-		childspace = kmalloc(sizeof(struct addrspace));
-		if(childspace!=NULL)
-		{
-			result = as_copy(childthings->parentaddr, &childspace);
-			if(result==0)
-				curthread->t_addrspace = childspace;
-		}
-*/
-		//copy the trapframe info now
 
-		temp_child = childthings->childtf;
+	//	child_tf = *childframe;
 
-		finalchild = *temp_child;
+		memcpy(&child_tf,tf,sizeof(struct trapframe));
 
-		finalchild.tf_a3=0;
-		finalchild.tf_v0=0;
+		child_tf.tf_a3=0;
+		child_tf.tf_v0=0;
 
-		finalchild.tf_epc = finalchild.tf_epc + 4;
+		child_tf.tf_epc +=4;
+
 
 		pid_t parentid = (pid_t)addr;
 		if(process_array[curthread->t_pid]->parent_id!=parentid)
 			process_array[curthread->t_pid]->parent_id=parentid;
 
 		if(!(curthread->t_addrspace==NULL))
-			as_activate(curthread->t_addrspace);
-
-		mips_usermode(&finalchild);
-
+		{
+			childspace = curthread->t_addrspace;
+			as_activate(childspace);
+		}
+		mips_usermode(&child_tf);
 	}
-
 }
+
 
 int
 sys___execv(userptr_t p_name,userptr_t argument)
