@@ -45,6 +45,7 @@
 #include <syscall.h>
 #include <test.h>
 #include <file_syscall.h>
+
 #include <copyinout.h>
 /*
  *
@@ -54,25 +55,87 @@
  * Calls vfs_open on progname and thus may destroy it.
  */
 int
+
 runprogram(char *progname, char **args)
 {
 	struct vnode *v;
 	vaddr_t entrypoint, stackptr;
 	int result;
 
-	//char *k_arr= kmalloc(sizeof(args));
-	int counter=0;
-	while(args[counter] != NULL){
-		counter++;
-		/*if ((result = copyin((const_userptr_t)args[counter], k_arr, sizeof(args[counter]))) != 0){
-			kfree(k_arr);
-			return result;
-		}
-*/
-	}
+
 
 	char k_des[PATH_MAX];
 	memcpy(k_des, progname,PATH_MAX);
+
+
+	/**
+	 * Author:Pratham Malik
+	 * adding arguments to stack
+	 */
+	/*
+	char **user_args;
+	char *temp;
+	char *final;
+	int string_length;
+	int new_length;
+	int i;
+
+	counter=0;
+	string_length=0;
+
+
+	user_args = kmalloc(sizeof(char **));
+
+	while(args[counter] != NULL)
+	{
+		temp = kstrdup(args[counter]);
+		kprintf("The argument is %s",temp);
+
+		string_length = strlen(temp);
+		if((string_length) % 4 == 0)
+		{
+			user_args[counter] = kmalloc(sizeof(string_length));
+//			result= copyout(temp,(userptr_t) user_args[counter],sizeof(string_length));
+//			if(result)
+//				return result;
+
+			user_args[counter] = temp;
+		}
+		else
+		{
+
+			new_length = string_length;
+			while(new_length%4 !=0)
+			{
+				new_length++;
+			}
+
+			final=temp;
+
+			for(i=string_length;i<=new_length;i++)
+			{
+				final[i]= '\0';
+			}
+
+			user_args[counter] = kmalloc(sizeof(new_length));
+			user_args[counter] = final;
+//			result = copyout(final,(userptr_t) user_args[counter],sizeof(new_length));
+				if(result)
+					return result;
+
+
+		}
+		counter++;
+	}
+*/
+/*
+	char **userspacearg = kmalloc(sizeof(user_args));
+	result = copyout(user_args,(userptr_t) userspacearg,sizeof(userspacearg));
+	if(result)
+		return result;
+*/
+
+	//End of additions by PM
 
 	/* Open the file. */
 	result = vfs_open(k_des, O_RDONLY, 0, &v);
@@ -111,15 +174,67 @@ runprogram(char *progname, char **args)
 		/* thread_exit destroys curthread->t_addrspace */
 		return result;
 	}
+
 	/*
 	* Added By Mohit
 	*
 	* Started for file table initialization
 	*/
-	result= copyout(progname, (userptr_t) &stackptr, sizeof(progname));
+	//char *uspace_args;
+	int counter=0;
+
+	while(args[counter] != NULL){
+		//uspace_args= kstrdup(args[counter]);
+		size_t actual_length;
+		char *final=args[counter];
+		int string_length = strlen(args[counter]);
+		if((string_length) % 4 != 0)
+		{
+			int new_length = string_length;
+			while(new_length%4 !=0)
+			{
+				new_length++;
+			}
+
+			for(int i=string_length;i<=new_length;i++)
+			{
+				final[i]= '\0';
+			}
+
+			/*user_args[counter] = kmalloc(sizeof(new_length));
+			user_args[counter] = final;*/
+		}
+		char *u_argsv;
+		result = as_define_stack(curthread->t_addrspace, &stackptr);
+		if (result) {
+			/* thread_exit destroys curthread->t_addrspace */
+			return result;
+		}
+		result= copyoutstr(final, (userptr_t) (stackptr-PATH_MAX), PATH_MAX, &actual_length);
+		if(result){
+			return result;
+		}
+		counter++;
+
+	}
+
+
+
+
+	//char *u_argsv;
+	/*size_t actual_length;
+	result= copyoutstr(*args, (userptr_t) (stackptr-ARG_MAX), ARG_MAX, &actual_length);
 	if(result){
 		return result;
-	}
+	}*/
+
+
+
+/**
+ * Author: Mohit Arora
+ * Initialing the file table
+ */
+
 	int result1=100;
 	//kprintf("Inside run program");
 	result1= intialize_file_desc_tbl(curthread->file_table);
@@ -127,15 +242,22 @@ runprogram(char *progname, char **args)
 		kprintf("Error");
 		return result1;
 	}
+
 	/*
 	* Ended
 	*/
+
+
+
+//End of Additions by MA
 
 
 	/* Warp to user mode. */
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
 			  stackptr, entrypoint);
 	
+
+
 
 
 

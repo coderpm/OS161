@@ -100,7 +100,9 @@ cmd_progthread(void *ptr, unsigned long nargs)
 
 	strcpy(progname, args[0]);
 
+
 	result = runprogram(progname, args);
+
 	if (result) {
 		kprintf("Running program %s failed: %s\n", args[0],
 			strerror(result));
@@ -137,11 +139,15 @@ common_prog(int nargs, char **args)
 			cmd_progthread /* thread function */,
 			args /* thread arg */, nargs /* thread arg */,
 			NULL);
+
 	if (result) {
 		kprintf("thread_fork failed: %s\n", strerror(result));
 		return result;
 	}
 
+	while(1){
+
+	}
 	return 0;
 }
 
