@@ -4,7 +4,7 @@
 #include <types.h>
 #include <thread.h>
 #include <limits.h>
-#include <addrspace.h>
+
 
 struct trapframe;
 struct thread;
@@ -13,7 +13,7 @@ struct thread;
  * Declared array for pid tracking
  */
 extern struct process_control *process_array[PROCESS_MAX];
-extern struct addrspace alladdr[PROCESS_MAX];
+extern struct lock *pid_lock;
 /**
 * Structure for Process Control
 */
@@ -32,8 +32,10 @@ struct process_control
 
 	//Semaphore to synchronize the the exit status
 	struct semaphore *process_sem;
-	//struct lock *process_lock;
-	//struct cv *process_cv;
+
+	bool waitstatus;
+	struct lock *process_lock;
+	struct cv *process_cv;
 };
 
 struct child_process{
@@ -57,7 +59,7 @@ int
 sys___exit(int);
 
 int
-sys___waitpid(int ,userptr_t ,int );
+sys___waitpid(int ,userptr_t ,int ,int32_t *retval);
 
 void
 deallocate_pid(pid_t processid);

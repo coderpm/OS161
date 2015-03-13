@@ -99,8 +99,8 @@ __printerr(int use_errno, const char *fmt, va_list ap)
 	}
 
 	/* print the program name */
-	/*__senderrstr(prog);
-	__senderrstr(": ");*/
+	__senderrstr(prog);
+	__senderrstr(": ");
 
 	/* process the printf format and args */
 	__vprintf(__senderr, NULL, fmt, ap);
