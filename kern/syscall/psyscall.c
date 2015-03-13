@@ -360,7 +360,7 @@ sys___fork(struct trapframe *tf, pid_t *returnval)
 	result = thread_fork(curthread->t_name,enter_process,parent_tf,parent_pid,&child);
 	if(result){
 	//	kfree(parent_tf);
-		if(process_array[child->t_pid] == 0 || process_array[child->t_pid] == NULL)
+	/*	if(process_array[child->t_pid] == 0 || process_array[child->t_pid] == NULL)
 		{
 			//Do Nothing
 		}
@@ -369,7 +369,7 @@ sys___fork(struct trapframe *tf, pid_t *returnval)
 			kfree(process_array[child->t_pid]);
 		}
 
-	//
+	//*/
 		return result;
 	}
 
