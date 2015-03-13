@@ -45,6 +45,7 @@
 #include <syscall.h>
 #include <test.h>
 #include <file_syscall.h>
+#include <copyinout.h>
 /*
  *
  * Load program "progname" and start running it in usermode.
@@ -59,8 +60,10 @@ runprogram(char *progname)
 	vaddr_t entrypoint, stackptr;
 	int result;
 
+	char k_des[NAME_MAX];
+	memcpy(k_des, progname, NAME_MAX);
 	/* Open the file. */
-	result = vfs_open(progname, O_RDONLY, 0, &v);
+	result = vfs_open(k_des, O_RDONLY, 0, &v);
 	if (result) {
 		return result;
 	}
@@ -96,26 +99,28 @@ runprogram(char *progname)
 		/* thread_exit destroys curthread->t_addrspace */
 		return result;
 	}
+	/*
+	* Added By Mohit
+	*
+	* Started for file table initialization
+	*/
+
 	int result1=100;
-	kprintf("Inside run program");
+	//kprintf("Inside run program");
 	result1= intialize_file_desc_tbl(curthread->file_table);
 	if( intialize_file_desc_tbl(curthread->file_table)){
 		kprintf("Error");
 		return result1;
 	}
+	/*
+	* Ended
+	*/
 	/* Warp to user mode. */
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
 			  stackptr, entrypoint);
 	
-	/*
-		 * Added By Mohit
-		 *
-		 * Started for file table initialization
-		 */
 
-		/*
-		 * Ended
-		 */
+
 
 	/* enter_new_process does not return. */
 	panic("enter_new_process returned\n");
