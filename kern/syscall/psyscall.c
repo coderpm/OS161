@@ -370,6 +370,7 @@ sys___fork(struct trapframe *tf, pid_t *returnval)
 		}
 
 	//*/
+
 		return result;
 	}
 
