@@ -55,46 +55,82 @@
  * Calls vfs_open on progname and thus may destroy it.
  */
 int
-runprogram(char *progname,char **args)
+runprogram(char *progname,char **argss)
 {
 	struct vnode *v;
 	vaddr_t entrypoint, stackptr;
 	int result;
 
-	/**
-	 * Author: Pratham Malik
-	 * adding code for accepting and check program name and arguments
-	 */
 
+	/**
+	 * Author:Pratham Malik
+	 * adding arguments to stack
+	 */
+	int counter;
 	char **user_args;
 	char *temp;
-	int counter;
+	char *final;
+	int string_length;
+	int new_length;
+	int i;
 
 	counter=0;
+	string_length=0;
 
-	//Copy the first argument
+
 	user_args = kmalloc(sizeof(char **));
-	if(user_args==NULL)
-	{
-		return ENOMEM;
-	}
 
-	temp = kmalloc(sizeof(char *));
-	if(temp==NULL)
+	while(argss[counter] != NULL)
 	{
-		kfree(user_args);
-		return ENOMEM;
-	}
+		temp = kstrdup(argss[counter]);
+		kprintf("The argument is %s",temp);
 
-	while(args[counter] != NULL)
-	{
-		temp = args[counter];
-		user_args[counter]=temp;
+		string_length = strlen(temp);
+		if((string_length) % 4 == 0)
+		{
+			user_args[counter] = kmalloc(sizeof(string_length));
+//			result= copyout(temp,(userptr_t) user_args[counter],sizeof(string_length));
+//			if(result)
+//				return result;
+
+			user_args[counter] = temp;
+		}
+		else
+		{
+
+			new_length = string_length;
+			while(new_length%4 !=0)
+			{
+				new_length++;
+			}
+
+			final=temp;
+
+			for(i=string_length;i<=new_length;i++)
+			{
+				final[i]= '\0';
+			}
+
+			user_args[counter] = kmalloc(sizeof(new_length));
+			user_args[counter] = final;
+//			result = copyout(final,(userptr_t) user_args[counter],sizeof(new_length));
+	/*			if(result)
+					return result;
+*/
+
+		}
 		counter++;
 	}
 
-	kfree(temp);
+/*
+	char **userspacearg = kmalloc(sizeof(user_args));
+	result = copyout(user_args,(userptr_t) userspacearg,sizeof(userspacearg));
+	if(result)
+		return result;
+*/
+
 	//End of additions by PM
+
 
 	/* Open the file. */
 	result = vfs_open(progname, O_RDONLY, 0, &v);
@@ -133,6 +169,9 @@ runprogram(char *progname,char **args)
 		/* thread_exit destroys curthread->t_addrspace */
 		return result;
 	}
+
+
+
 
 /**
  * Author: Mohit Arora
