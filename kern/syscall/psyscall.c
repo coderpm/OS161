@@ -216,8 +216,8 @@ sys___waitpid(int processid,userptr_t  status,int options, int32_t *retval)
 
 
 	}
-//	else if(process_array[processid]->exit_status==false)
-	else{
+	else if(process_array[processid]->exit_status==false)
+	{
 		lock_acquire(process_array[processid]->process_lock);
 
 		process_array[processid]->waitstatus=true;
