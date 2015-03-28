@@ -420,7 +420,7 @@ int
 sys___execv(userptr_t p_name,userptr_t ar)
 {
 	struct vnode *p_vnode;
-//	vaddr_t entrypoint, stackptr;
+	vaddr_t  stackptr;
 
 	int result;
 //	int counter;
@@ -454,19 +454,71 @@ sys___execv(userptr_t p_name,userptr_t ar)
 		return result;
 	}
 
-	if(copied_length == 1)
+	/*if(copied_length == 1)
 	{
 		kfree(kname);
 		return EINVAL;
+	}*/
+
+
+	//char **arguments = (char **)ar;
+	result = as_define_stack(curthread->t_addrspace, &stackptr);
+	if (result) {
+			/* thread_exit destroys curthread->t_addrspace */
+		return result;
 	}
+	char **karguments = kmalloc(sizeof(char**));
 
-
-	char **arguments = (char **)ar;
-	char **karguments = kmalloc(sizeof(arguments));
-
-	result = copyin((const_userptr_t) arguments,karguments,sizeof(karguments));
+	result = copyin((const_userptr_t) ar,karguments,sizeof(karguments));
 	if(result)
 		return result;
+	int count =0;
+	char **karray= kmalloc(sizeof(char**));
+	size_t final_stack=0;
+	while(karguments[count] != NULL){
+		//karray[count];
+		int string_length = strlen(karguments[count])+1;
+			int new_length = string_length;
+			if((string_length) % 4 != 0)
+			{
+				while(new_length%4 !=0)
+				{
+					new_length++;
+				}
+				for(int i=string_length;i<=new_length;i++)
+				{
+					karguments[count][i]= '\0';
+				}
+			}
+		char *k_des= kmalloc(sizeof(char*));
+		size_t final_length= (size_t)new_length;
+		size_t actual_length;
+		if((result=copyinstr((const_userptr_t)karguments[count], k_des, sizeof(karguments[count]), &actual_length ))!= 0){
+				kfree(k_des);
+				return result;
+		}
+		if(count==0){
+			final_stack= stackptr- final_length;
+		}
+		else{
+			final_stack= (size_t)karray[count-1]- final_length;
+		}
+		size_t actual_length1;
+		result= copyoutstr(k_des, (userptr_t) (final_stack), final_length, &actual_length1);
+		if(result){
+			return result;
+		}
+
+		karray[count]=  (char*)(final_stack);
+
+		count++;
+	}
+	karray[count]= (char*)NULL;
+	final_stack= (size_t)karray[count-1]- sizeof(karray);
+	result= copyout(karray, (userptr_t) (final_stack),sizeof(karray));
+	if(result){
+		return result;
+	}
 	//Open the file.
 		result = vfs_open(kname, O_RDONLY, 0, &p_vnode);
 		if (result) {
