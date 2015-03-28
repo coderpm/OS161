@@ -62,80 +62,29 @@ runprogram(char *progname, char **args)
 	vaddr_t entrypoint, stackptr;
 	int result;
 
+	if(args==NULL)
+	{
+		//Do Nothing
+
+	}
+	else
+	{
+		char **user_args;
+		user_args = kmalloc(sizeof(char **));
+
+		user_args[0]=args[0];
+
+	}
+
+
 
 
 	char k_des[PATH_MAX];
 	memcpy(k_des, progname,PATH_MAX);
 
 
-	/**
-	 * Author:Pratham Malik
-	 * adding arguments to stack
-	 */
-	/*
-	char **user_args;
-	char *temp;
-	char *final;
-	int string_length;
-	int new_length;
-	int i;
-
-	counter=0;
-	string_length=0;
 
 
-	user_args = kmalloc(sizeof(char **));
-
-	while(args[counter] != NULL)
-	{
-		temp = kstrdup(args[counter]);
-		kprintf("The argument is %s",temp);
-
-		string_length = strlen(temp);
-		if((string_length) % 4 == 0)
-		{
-			user_args[counter] = kmalloc(sizeof(string_length));
-//			result= copyout(temp,(userptr_t) user_args[counter],sizeof(string_length));
-//			if(result)
-//				return result;
-
-			user_args[counter] = temp;
-		}
-		else
-		{
-
-			new_length = string_length;
-			while(new_length%4 !=0)
-			{
-				new_length++;
-			}
-
-			final=temp;
-
-			for(i=string_length;i<=new_length;i++)
-			{
-				final[i]= '\0';
-			}
-
-			user_args[counter] = kmalloc(sizeof(new_length));
-			user_args[counter] = final;
-//			result = copyout(final,(userptr_t) user_args[counter],sizeof(new_length));
-				if(result)
-					return result;
-
-
-		}
-		counter++;
-	}
-*/
-/*
-	char **userspacearg = kmalloc(sizeof(user_args));
-	result = copyout(user_args,(userptr_t) userspacearg,sizeof(userspacearg));
-	if(result)
-		return result;
-*/
-
-	//End of additions by PM
 
 	/* Open the file. */
 	result = vfs_open(k_des, O_RDONLY, 0, &v);
@@ -180,54 +129,39 @@ runprogram(char *progname, char **args)
 	*
 	* Started for file table initialization
 	*/
-	//char *uspace_args;
-	int counter=0;
-
-	while(args[counter] != NULL){
-		//uspace_args= kstrdup(args[counter]);
-		size_t actual_length;
-		char *final=args[counter];
-		int string_length = strlen(args[counter]);
+		int string_length = strlen(progname)+1;
+		int new_length = string_length;
 		if((string_length) % 4 != 0)
-		{
-			int new_length = string_length;
-			while(new_length%4 !=0)
 			{
-				new_length++;
-			}
 
-			for(int i=string_length;i<=new_length;i++)
-			{
-				final[i]= '\0';
-			}
+				while(new_length%4 !=0)
+				{
+					new_length++;
+				}
 
-			/*user_args[counter] = kmalloc(sizeof(new_length));
-			user_args[counter] = final;*/
-		}
-		char *u_argsv;
-		result = as_define_stack(curthread->t_addrspace, &stackptr);
-		if (result) {
-			/* thread_exit destroys curthread->t_addrspace */
-			return result;
-		}
-		result= copyoutstr(final, (userptr_t) (stackptr-PATH_MAX), PATH_MAX, &actual_length);
+				for(int i=string_length;i<=new_length;i++)
+				{
+					progname[i]= '\0';
+				}
+			}
+		size_t final_length= (size_t)new_length;
+		size_t null_length= sizeof(NULL);
+		size_t pointer_length= sizeof(char*);
+		//size_t actual_length;
+		size_t final_stack= stackptr- final_length-null_length-pointer_length;
+		char *karray[2];
+		karray[0]=  (char*)(final_stack+null_length+ pointer_length);
+		karray[1]=  (char*)NULL;
+		//char *x= &karray[0];
+		result= copyout(karray, (userptr_t) (final_stack),sizeof(karray));
 		if(result){
 			return result;
 		}
-		counter++;
-
-	}
-
-
-
-
-	//char *u_argsv;
-	/*size_t actual_length;
-	result= copyoutstr(*args, (userptr_t) (stackptr-ARG_MAX), ARG_MAX, &actual_length);
-	if(result){
-		return result;
-	}*/
-
+		size_t actual_length1;
+		result= copyoutstr(progname, (userptr_t) (final_stack+ sizeof(karray)), final_length, &actual_length1);
+		if(result){
+			return result;
+		}
 
 
 /**
@@ -250,11 +184,15 @@ runprogram(char *progname, char **args)
 
 
 //End of Additions by MA
-
+	result = as_define_stack(curthread->t_addrspace, &stackptr);
+		if (result) {
+			/* thread_exit destroys curthread->t_addrspace */
+			return result;
+		}
 
 	/* Warp to user mode. */
-	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
-			  stackptr, entrypoint);
+	enter_new_process(1 /*argc*/, (userptr_t)(final_stack) /*userspace addr of argv*/,
+			final_stack, entrypoint);
 	
 
 
