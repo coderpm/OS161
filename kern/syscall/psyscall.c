@@ -420,7 +420,8 @@ int
 sys___execv(userptr_t p_name,userptr_t ar)
 {
 	struct vnode *p_vnode;
-//	vaddr_t entrypoint, stackptr;
+	vaddr_t  stackptr;
+	vaddr_t entrypoint;
 
 	int result;
 //	int counter;
@@ -446,32 +447,99 @@ sys___execv(userptr_t p_name,userptr_t ar)
 	if(kname==NULL)
 		return ENOMEM;
 
-	char **arguments = (char **)ar;
-		char **karguments = kmalloc(sizeof(arguments));
-
-		/*int counter=0;
-		while(arguments[counter] != NULL)
-		{
-
-		}*/
-
-		result = copyin((const_userptr_t) arguments,karguments,sizeof(karguments));
-		if(result)
-			return result;
-
-//	result = copyin(p_name,kname,sizeof(p_name));
 	result = copyinstr(p_name,kname,sizeof(p_name),&copied_length);
+/*
+	if(result)
+	{
+		kfree(kname);
+		return result;
+	}
+*/
+	if(copied_length == 1)
+	{
+		kfree(kname);
+		return EINVAL;
+	}
+
+	result = copyin(p_name,kname,sizeof(p_name));
 	if(result)
 	{
 		kfree(kname);
 		return result;
 	}
 
-	if(copied_length == 1)
+
+
+	//char **arguments = (char **)ar;
+	char **karguments = kmalloc(sizeof(char**));
+
+	result = copyin((const_userptr_t) ar,karguments,sizeof(karguments));
+	if(result)
+		return result;
+	int count =0;
+	char **karray= kmalloc(sizeof(char**));
+	size_t final_stack=0;
+	while(karguments[count] != NULL){
+		//karray[count];
+		int string_length = strlen(karguments[count])+1;
+			int new_length = string_length;
+			if((string_length) % 4 != 0)
+			{
+				while(new_length%4 !=0)
+				{
+					new_length++;
+				}
+				for(int i=string_length;i<=new_length;i++)
+				{
+					karguments[count][i]= '\0';
+				}
+			}
+		char *k_des= kmalloc(sizeof(char*));
+		size_t final_length= (size_t)new_length;
+		size_t actual_length;
+		if((result=copyinstr((const_userptr_t)karguments[count], k_des, sizeof(karguments[count]), &actual_length ))!= 0){
+				kfree(k_des);
+				return result;
+		}
+		if(count==0){
+			final_stack= stackptr- final_length;
+		}
+		else{
+			final_stack= (size_t)karray[count-1]- final_length;
+		}
+		size_t actual_length1;
+		result= copyoutstr(k_des, (userptr_t) (final_stack), final_length, &actual_length1);
+		if(result){
+			return result;
+		}
+
+		karray[count]=  (char*)(final_stack);
+
+		count++;
+	}
+	karray[count]= (char*)NULL;
+	final_stack= (size_t)karray[count-1]- sizeof(karray);
+	result= copyout(karray, (userptr_t) (final_stack),sizeof(karray));
+	if(result){
+		return result;
+	}
+
+/*
+	result = copyinstr(p_name,kname,sizeof(p_name),&copied_length);
+	if(result)
 	{
 		kfree(kname);
-		return EINVAL;
+		return result;
 	}
+*/
+
+	result = as_define_stack(curthread->t_addrspace, &stackptr);
+	if (result) {
+			/* thread_exit destroys curthread->t_addrspace */
+		return result;
+	}
+
+
 
 	//Open the file.
 		result = vfs_open(kname, O_RDONLY, 0, &p_vnode);
@@ -479,71 +547,57 @@ sys___execv(userptr_t p_name,userptr_t ar)
 			return result;
 		}
 
-/*
-*/
 
-/*	//Copy into the kernel buffer
-	char **user_args = (char **) ar;
+	/**
+	* Additions by Pratham Malik
+	*/
 
-	char **kernel_buffer = kmalloc(sizeof(char *));;
-	if(kernel_buffer==NULL)
-	{
-		kfree(kname);
-		return ENOMEM;
-	}*/
+		/* We should be a new thread. */
+		//Destroy the previous one
 
-/*
-	counter =0;
-	while(user_args[counter] != NULL)
-	{
-		char *temp = user_args[counter];
+		as_destroy(curthread->t_addrspace);
 
-		result = copyinstr((const_userptr_t)temp,kernel_buffer[counter],sizeof(temp),&copied_length);
-		if(result)
+
+//		KASSERT(curthread->t_addrspace == NULL);
+		/* Create a new address space. */
+		curthread->t_addrspace = as_create();
+
+		if (curthread->t_addrspace==NULL)
 		{
-			kfree(kname);
-			kfree(kernel_buffer);
+			vfs_close(p_vnode);
+			return ENOMEM;
+		}
+
+		/* Activate it. */
+		as_activate(curthread->t_addrspace);
+
+		/* Load the executable. */
+		result = load_elf(p_vnode, &entrypoint);
+		if (result)
+		{
+			/* thread_exit destroys curthread->t_addrspace */
+			vfs_close(p_vnode);
 			return result;
 		}
-		counter++;
 
-	}
-
-
-	 We should be a new thread.
-	KASSERT(curthread->t_addrspace == NULL);
-
-	 Create a new address space.
-	curthread->t_addrspace = as_create();
-	if (curthread->t_addrspace==NULL) {
+		/* Done with the file now. */
 		vfs_close(p_vnode);
-		return ENOMEM;
-	}
 
-	 Activate it.
-	as_activate(curthread->t_addrspace);
+		/* Define the user stack in the address space */
+		result = as_define_stack(curthread->t_addrspace, &stackptr);
+		if (result)
+		{
+			/* thread_exit destroys curthread->t_addrspace */
+			return result;
+		}
 
-	 Load the executable.
-	result = load_elf(p_vnode, &entrypoint);
-	if (result) {
-		 thread_exit destroys curthread->t_addrspace
-		vfs_close(p_vnode);
-		return result;
-	}
+		/* Warp to user mode. */
+			enter_new_process(1 /*argc*/, (userptr_t)(final_stack) /*userspace addr of argv*/,
+					final_stack, entrypoint);
 
-	 Done with the file now.
-	vfs_close(p_vnode);
+//End of Additions by PM
 
-	 Define the user stack in the address space
-	result = as_define_stack(curthread->t_addrspace, &stackptr);
-	if (result) {
-		 thread_exit destroys curthread->t_addrspace
-		return result;
-	}
-*/
-
-
-	return 0;
+		return 0;
 }
 
 

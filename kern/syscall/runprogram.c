@@ -55,13 +55,13 @@
  * Calls vfs_open on progname and thus may destroy it.
  */
 int
-runprogram(char *progname,char **argss)
+runprogram(char *progname, char **args)
 {
 	struct vnode *v;
 	vaddr_t entrypoint, stackptr;
 	int result;
 
-	if(argss==NULL)
+	if(args==NULL)
 	{
 		//Do Nothing
 
@@ -71,84 +71,15 @@ runprogram(char *progname,char **argss)
 		char **user_args;
 		user_args = kmalloc(sizeof(char **));
 
-		user_args[0]=argss[0];
+		user_args[0]=args[0];
 
 	}
-/*
 
-	*
-	 * Author:Pratham Malik
-	 * adding arguments to stack
+	char k_des[PATH_MAX];
+	memcpy(k_des, progname,PATH_MAX);
 
-	int counter;
-	char **user_args;
-	char *temp;
-	char *final;
-	int string_length;
-	int new_length;
-	int i;
-
-	counter=0;
-	string_length=0;
-
-
-	user_args = kmalloc(sizeof(char **));
-
-	while(argss[counter] != NULL)
-	{
-		temp = kstrdup(argss[counter]);
-		kprintf("The argument is %s",temp);
-
-		string_length = strlen(temp);
-		if((string_length) % 4 == 0)
-		{
-			user_args[counter] = kmalloc(sizeof(string_length));
-//			result= copyout(temp,(userptr_t) user_args[counter],sizeof(string_length));
-//			if(result)
-//				return result;
-
-			user_args[counter] = temp;
-		}
-		else
-		{
-
-			new_length = string_length;
-			while(new_length%4 !=0)
-			{
-				new_length++;
-			}
-
-			final=temp;
-
-			for(i=string_length;i<=new_length;i++)
-			{
-				final[i]= '\0';
-			}
-
-			user_args[counter] = kmalloc(sizeof(new_length));
-			user_args[counter] = final;
-//			result = copyout(final,(userptr_t) user_args[counter],sizeof(new_length));
-				if(result)
-					return result;
-
-
-		}
-		counter++;
-	}
-
-
-	char **userspacearg = kmalloc(sizeof(user_args));
-	result = copyout(user_args,(userptr_t) userspacearg,sizeof(userspacearg));
-	if(result)
-		return result;
-
-
-	//End of additions by PM
-
-
-*/
 	/* Open the file. */
-	result = vfs_open(progname, O_RDONLY, 0, &v);
+	result = vfs_open(k_des, O_RDONLY, 0, &v);
 	if (result) {
 		return result;
 	}
@@ -162,7 +93,6 @@ runprogram(char *progname,char **argss)
 		vfs_close(v);
 		return ENOMEM;
 	}
-
 
 	/* Activate it. */
 	as_activate(curthread->t_addrspace);
@@ -185,32 +115,78 @@ runprogram(char *progname,char **argss)
 		return result;
 	}
 
+	/*
+	* Added By Mohit
+	*
+	* Started for file table initialization
+	*/
+		int string_length = strlen(progname)+1;
+		int new_length = string_length;
+		if((string_length) % 4 != 0)
+			{
 
+				while(new_length%4 !=0)
+				{
+					new_length++;
+				}
+
+				for(int i=string_length;i<=new_length;i++)
+				{
+					progname[i]= '\0';
+				}
+			}
+		size_t final_length= (size_t)new_length;
+		size_t null_length= sizeof(NULL);
+		size_t pointer_length= sizeof(char*);
+		//size_t actual_length;
+		size_t final_stack= stackptr- final_length-null_length-pointer_length;
+		char *karray[2];
+		karray[0]=  (char*)(final_stack+null_length+ pointer_length);
+		karray[1]=  (char*)NULL;
+		//char *x= &karray[0];
+		result= copyout(karray, (userptr_t) (final_stack),sizeof(karray));
+		if(result){
+			return result;
+		}
+		size_t actual_length1;
+		result= copyoutstr(progname, (userptr_t) (final_stack+ sizeof(karray)), final_length, &actual_length1);
+		if(result){
+			return result;
+		}
 
 
 /**
  * Author: Mohit Arora
  * Initialing the file table
  */
+
 	int result1=100;
-	kprintf("Inside run program");
+	//kprintf("Inside run program");
 	result1= intialize_file_desc_tbl(curthread->file_table);
 	if( intialize_file_desc_tbl(curthread->file_table)){
 		kprintf("Error");
 		return result1;
 	}
 
+	/*
+	* Ended
+	*/
+
+
+
 //End of Additions by MA
+	result = as_define_stack(curthread->t_addrspace, &stackptr);
+		if (result) {
+			/* thread_exit destroys curthread->t_addrspace */
+			return result;
+		}
 
 	/* Warp to user mode. */
-	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
-			  stackptr, entrypoint);
+	enter_new_process(1 /*argc*/, (userptr_t)(final_stack) /*userspace addr of argv*/,
+			final_stack, entrypoint);
 	
 
 	/* enter_new_process does not return. */
 	panic("enter_new_process returned\n");
 	return EINVAL;
 }
-
-
-

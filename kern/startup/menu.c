@@ -100,7 +100,9 @@ cmd_progthread(void *ptr, unsigned long nargs)
 
 	strcpy(progname, args[0]);
 
-	result = runprogram(progname,args);
+
+	result = runprogram(progname, args);
+
 	if (result) {
 		kprintf("Running program %s failed: %s\n", args[0],
 			strerror(result));
@@ -146,11 +148,13 @@ common_prog(int nargs, char **args)
 	result = thread_fork(args[0] /* thread name */,
 			cmd_progthread /* thread function */,
 			args /* thread arg */, nargs /* thread arg */,
-			&childthr);
+&childthr);
+
 	if (result) {
 		kprintf("thread_fork failed: %s\n", strerror(result));
 		return result;
 	}
+
 
 	child_pid = childthr->t_pid;
 
@@ -172,6 +176,7 @@ common_prog(int nargs, char **args)
 			args  thread arg , nargs  thread arg ,
 			NULL);
 */
+
 
 	return 0;
 }
