@@ -448,13 +448,6 @@ sys___execv(userptr_t p_name,userptr_t ar)
 		return ENOMEM;
 
 	result = copyinstr(p_name,kname,sizeof(p_name),&copied_length);
-/*
-	if(result)
-	{
-		kfree(kname);
-		return result;
-	}
-*/
 	if(copied_length == 1)
 	{
 		kfree(kname);
