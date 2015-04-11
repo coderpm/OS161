@@ -120,39 +120,92 @@ runprogram(char *progname, char **args)
 	*
 	* Started for file table initialization
 	*/
-		int string_length = strlen(progname)+1;
-		int new_length = string_length;
-		if((string_length) % 4 != 0)
+
+	char **karray= kmalloc(sizeof(char**));
+	size_t final_stack=0;
+	int string_length = strlen(progname)+1;
+	int new_length = string_length;
+	int count =1;
+	int k_count=0;
+	if((string_length) % 4 != 0)
+		{
+			while(new_length%4 !=0)
+				{
+				new_length++;
+				}
+			for(int i=string_length;i<=new_length;i++)
 			{
-
-				while(new_length%4 !=0)
-				{
-					new_length++;
-				}
-
-				for(int i=string_length;i<=new_length;i++)
-				{
-					progname[i]= '\0';
-				}
+				progname[i]= '\0';
 			}
+		}
 		size_t final_length= (size_t)new_length;
-		size_t null_length= sizeof(NULL);
-		size_t pointer_length= sizeof(char*);
+		/*size_t null_length= sizeof(NULL);
+		size_t pointer_length= sizeof(char*);*/
+		final_stack= stackptr- final_length;
+	karray[k_count]= (char*)(final_stack);
+	size_t actual_length1;
+	result= copyoutstr(progname, (userptr_t) (final_stack), final_length, &actual_length1);
+	if(result){
+		return result;
+	}
+
+		while(args[count] != NULL){
+			//karray[count];
+			k_count++;
+			int string_length = strlen(args[count])+1;
+				int new_length = string_length;
+				if((string_length) % 4 != 0)
+				{
+					while(new_length%4 !=0)
+					{
+						new_length++;
+					}
+					for(int i=string_length;i<=new_length;i++)
+					{
+						args[count][i]= '\0';
+					}
+				}
+			//char *k_des= kmalloc(sizeof(char*));
+			size_t final_length= (size_t)new_length;
+			//size_t actual_length;
+			/*if((result=copyinstr((const_userptr_t)args[count], k_des, sizeof(args[count]), &actual_length ))!= 0){
+					kfree(k_des);
+					return result;
+			}
+			if(count==0){
+				final_stack= stackptr- final_length;
+			}
+			else{*/
+				final_stack= (size_t)karray[k_count-1]- final_length;
+			//}
+			size_t actual_length1;
+			result= copyoutstr(args[count], (userptr_t) (final_stack), final_length, &actual_length1);
+			if(result){
+				return result;
+			}
+
+			karray[k_count]=  (char*)(final_stack);
+
+			count++;
+		}
+
 		//size_t actual_length;
-		size_t final_stack= stackptr- final_length-null_length-pointer_length;
-		char *karray[2];
-		karray[0]=  (char*)(final_stack+null_length+ pointer_length);
-		karray[1]=  (char*)NULL;
+	karray[k_count+1]=  (char*)NULL;
+	int value= k_count+1;
+	int arr_length = (value+1)*sizeof(char*);
+	final_stack= (size_t)karray[k_count]- arr_length;
+	/*karray[count]=  (char*)(final_stack+null_length+ pointer_length);*/
+
 		//char *x= &karray[0];
-		result= copyout(karray, (userptr_t) (final_stack),sizeof(karray));
+		result= copyout(karray, (userptr_t) (final_stack),arr_length);
 		if(result){
 			return result;
 		}
-		size_t actual_length1;
-		result= copyoutstr(progname, (userptr_t) (final_stack+ sizeof(karray)), final_length, &actual_length1);
-		if(result){
-			return result;
-		}
+
+/*
+ * Added By Mohit Arora
+ *  8Th April
+ */
 
 
 /**
