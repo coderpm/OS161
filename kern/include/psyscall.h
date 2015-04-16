@@ -76,6 +76,6 @@ void
 enter_process(void *tf,unsigned long addr);
 
 int
-sys___execv(userptr_t ,userptr_t);
+sys___execv(char *p_name ,char ** arguments);
 
 #endif /* _PSYSCALL_H_ */

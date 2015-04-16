@@ -59,5 +59,37 @@ void free_kpages(vaddr_t addr);
 void vm_tlbshootdown_all(void);
 void vm_tlbshootdown(const struct tlbshootdown *);
 
+/**
+ * Added for Assignment 3
+ */
+paddr_t
+getppages(unsigned long npages);
+vaddr_t
+alloc_kpages(int npages);
+void
+free_kpages(vaddr_t addr);
+void
+vm_tlbshootdown_all(void);
+void
+vm_tlbshootdown(const struct tlbshootdown *ts);
+int
+vm_fault(int faulttype, vaddr_t faultaddress);
+
+struct page_struct{
+    paddr_t ps_paddr;
+    off_t ps_saddr;
+    struct spinlock *ps_spinlock;
+};
+struct coremap_entry{
+    struct page_struct *ce_page;
+    vaddr_t ce_vaddr;
+    bool is_allocated:1;
+    bool is_kernPage:1;
+    bool is_dirty:1;
+};
+
+struct coremap_entry *coremap;
+bool coremap_initialized;
+
 
 #endif /* _VM_H_ */
