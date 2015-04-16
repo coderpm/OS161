@@ -89,7 +89,7 @@ cmd_progthread(void *ptr, unsigned long nargs)
 	char progname[128];
 	int result;
 
-	KASSERT(nargs >= 1);
+	//KASSERT(nargs >= 1);
 
 	if (nargs > 2) {
 		kprintf("Warning: argument passing from menu not supported\n");

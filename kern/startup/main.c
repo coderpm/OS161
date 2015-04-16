@@ -124,6 +124,7 @@ boot(void)
 
 	/* Late phase of initialization. */
 	vm_bootstrap();
+	kprintf("Came here\n");
 	kprintf_bootstrap();
 	thread_start_cpus();
 
