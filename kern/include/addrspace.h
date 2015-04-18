@@ -53,18 +53,22 @@ struct addrspace {
         vaddr_t as_vbase1;
         paddr_t as_pbase1;
         size_t as_npages1;
+
         vaddr_t as_vbase2;
         paddr_t as_pbase2;
         size_t as_npages2;
+
         paddr_t as_stackpbase;
 #else
         vaddr_t as_vbase1;
-             paddr_t as_pbase1;
-             size_t as_npages1;
-             vaddr_t as_vbase2;
-             paddr_t as_pbase2;
-             size_t as_npages2;
-             paddr_t as_stackpbase;
+        paddr_t as_pbase1;
+        size_t as_npages1;
+
+        vaddr_t as_vbase2;
+        paddr_t as_pbase2;
+        size_t as_npages2;
+
+        paddr_t as_stackpbase;
         /* Put stuff here for your VM system */
 #endif
 };
@@ -116,6 +120,7 @@ int               as_define_region(struct addrspace *as,
 int               as_prepare_load(struct addrspace *as);
 int               as_complete_load(struct addrspace *as);
 int               as_define_stack(struct addrspace *as, vaddr_t *initstackptr);
+void			  as_zero_region(paddr_t paddr, unsigned npages);
 
 
 /*
