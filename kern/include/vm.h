@@ -78,13 +78,9 @@ vm_fault(int faulttype, vaddr_t faultaddress);
 /*
  * Added By Mohit
  */
-struct page_struct{
-	paddr_t ps_paddr;
-	off_t ps_saddr;
-	struct spinlock *ps_spinlock;
-};
+
 struct coremap_entry{
-	struct page_struct *ce_page;
+	paddr_t ce_paddr;
 	vaddr_t ce_vaddr;
 	bool is_allocated:1;
 	bool is_kernPage:1;
