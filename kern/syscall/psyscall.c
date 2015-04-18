@@ -278,7 +278,6 @@ sys___kwaitpid(int processid,int *status,int options, int32_t *retval)
 	if(!(curthread->t_pid == process_array[processid]->parent_id))
 		return ECHILD;
 
-
 	if(process_array[processid]->exit_status==true)
 	{
 		lock_acquire(process_array[processid]->process_lock);

@@ -112,7 +112,7 @@ vm_bootstrap(void)
 	for(int i=num_coremapPages;i<total_page_num;i++)
 	{
 		coremap[i].ce_paddr= firstpaddr+i*PAGE_SIZE;
-		coremap[i].ce_vaddr= PADDR_TO_KVADDR(freepaddr+i*PAGE_SIZE);
+	//	coremap[i].ce_vaddr= PADDR_TO_KVADDR(freepaddr+i*PAGE_SIZE);
 		coremap[i].page_status=0;	//Signifying that it is free
 	}
 
@@ -122,6 +122,13 @@ vm_bootstrap(void)
 	 * so that now alloc_kpages works differently before and after vm_bootstrap
 	 */
 	coremap_initialized= 1;
+	for(int i=20;i<25;i++)
+	{
+		kprintf("P ADDR  %d \n",coremap[i].ce_paddr);
+	//	kprintf("V ADDR  %d \n",coremap[i].ce_vaddr);
+		kprintf("Status  %d \n",coremap[i].page_status);
+
+	}
 	kprintf("Exiting VM_Bootstrap \n");
 
 
@@ -145,6 +152,7 @@ vaddr_t
 alloc_kpages(int npages)
 {
 	paddr_t pa;
+	vaddr_t va;
 
 	if(!coremap_initialized){
 		pa = getppages(npages);
@@ -158,28 +166,29 @@ alloc_kpages(int npages)
 		//Means that coremap has been initialized and now allocate pages from the coremap
 
 		bool allocation_condition=false;
-
+		lock_acquire(coremap_lock);
 		//Run the While the allocation condition is not true
 		while(!allocation_condition)
 		{
 			//First check if number of pages requested is 1
 			if(npages==1)
 			{
+
 				for(int i=0;i<total_systempages;i++)
 				{
-					lock_acquire(coremap_lock);
+
 					//Check if we find a page whose status is free
 					if(coremap[i].page_status==0)
 					{
 
-						pa = coremap[i].ce_vaddr;
+						va = PADDR_TO_KVADDR(coremap[i].ce_paddr);
 						coremap[i].page_status=1;
 						//coremap[index].allocation_time=;
 						as_zero_region(coremap[i].ce_paddr,npages);
 						allocation_condition=true;
+						break;
 					}//End of If checking that page_status == 0
 
-					lock_release(coremap_lock);
 
 				}//End of FOR looping over all the coremap entries checking for free page i.e. page_status =0
 				if(!allocation_condition)
@@ -190,12 +199,13 @@ alloc_kpages(int npages)
 								//Now check if the page is not fixed then replace it
 								if(coremap[i].page_status!=1)
 								{
-									pa = coremap[i].ce_vaddr;
+									va = PADDR_TO_KVADDR(coremap[i].ce_paddr);
 									coremap[i].page_status=1;
 									as_zero_region(coremap[i].ce_paddr,npages);
 									allocation_condition=true;
 									//coremap[index].allocation_time=;
 									allocation_condition=true;
+									break;
 								}
 							}
 				}
@@ -204,7 +214,6 @@ alloc_kpages(int npages)
 			else
 			{
 				//Meaning the number of pages requested is more than 1
-				lock_acquire(coremap_lock);
 
 				int index = find_npages(npages);
 				if(index<0)
@@ -212,15 +221,17 @@ alloc_kpages(int npages)
 				else
 				{
 					as_zero_region(coremap[index].ce_paddr,npages);
-					pa = coremap[index].ce_vaddr;
+					va = PADDR_TO_KVADDR(coremap[index].ce_paddr);
+
 				}
 
-				lock_release(coremap_lock);
 			}
 		} // End of while checking the allocation_condition
 
+		lock_release(coremap_lock);
+
 		//Return the physical address retrieved from the coremap
-		return pa;
+		return va;
 	}
 }
 
