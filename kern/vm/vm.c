@@ -113,7 +113,7 @@ alloc_kpages(int npages)
 			else{
 				if(npages==1){
 					available =0;
-
+					coremap[i].is_allocated=1;
 					pa= coremap[i].ce_vaddr;
 				}
 				else{
