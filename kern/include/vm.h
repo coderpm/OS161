@@ -64,8 +64,10 @@ void vm_tlbshootdown(const struct tlbshootdown *);
 /**
  * Added for Assignment 3
  */
+/*
 paddr_t
 getppages(unsigned long npages);
+*/
 vaddr_t
 alloc_kpages(int npages);
 void
