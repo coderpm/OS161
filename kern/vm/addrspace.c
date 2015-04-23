@@ -56,13 +56,11 @@ as_create(void)
 		return NULL;
 	}
 
-	as->as_vbase1 = 0;
-	as->as_pbase1 = 0;
-	as->as_npages1 = 0;
-	as->as_vbase2 = 0;
-	as->as_pbase2 = 0;
-	as->as_npages2 = 0;
-	as->as_stackpbase = 0;
+	as->as_stackpbase=0;
+	as->heap_end=0;
+	as->heap_start=0;
+	as->lock_page_table = lock_create("page_table");
+	as->page_table = NULL;
 
 	return as;
 }

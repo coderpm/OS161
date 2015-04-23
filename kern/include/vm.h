@@ -64,10 +64,8 @@ void vm_tlbshootdown(const struct tlbshootdown *);
 /**
  * Added for Assignment 3
  */
-/*
 paddr_t
 getppages(unsigned long npages);
-*/
 vaddr_t
 alloc_kpages(int npages);
 void
@@ -98,7 +96,8 @@ struct coremap_entry{
 	 * Set to 3 if page status is Clean
 	 */
 	int32_t page_status;
-	time_t allocation_time;
+	pid_t process_id;		//Stores the process id of the process which is accessing the coremap entry
+	int chunk_allocated;	//Stores the number of chunk allocated so that it is easy to free
 };
 
 extern struct coremap_entry *coremap;
