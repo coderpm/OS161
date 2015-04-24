@@ -129,7 +129,6 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 	return EUNIMP;
 }
 
-static
 void
 as_zero_region(paddr_t paddr, unsigned npages)
 {

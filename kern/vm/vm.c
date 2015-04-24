@@ -53,28 +53,85 @@
  */
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
+/**
+ * Added by Pratham Malik
+ * Redeclaration of global variable for:
+ * 1. Storing the total number of pages
+ * 2. Coremap entry structure
+ * 3. Coremap initialization checking boolean
+ * 3. Coremap global lock
+ */
 
+int32_t total_systempages;
+struct coremap_entry *coremap;
+bool coremap_initialized;
+struct lock *coremap_lock;
+
+//ENd of Additions by PM
 void
 vm_bootstrap(void)
 {
-	/* Do nothing. */
 	paddr_t firstpaddr, lastpaddr;
+
+	//Create the global coremap lock
+	coremap_lock = lock_create("coremap_lock");
+
+	//Get the first and last physical address of RAM
 	ram_getsize(&firstpaddr, &lastpaddr);
+
+	//Calculate the total number of pages --
+	//TODO ADD COde to Roundoff the result or int will itself do the round off
 	int total_page_num = (lastpaddr- firstpaddr) / PAGE_SIZE;
+	total_systempages = total_page_num;
 	/* pages should be a kernel virtual address !!  */
 	coremap = (struct coremap_entry*)PADDR_TO_KVADDR(firstpaddr);
 	paddr_t freepaddr = firstpaddr + total_page_num * sizeof(struct coremap_entry);
-	int noOfcoremapPages= (freepaddr-firstpaddr)/PAGE_SIZE;
 
-	for(int i=0; i<total_page_num-noOfcoremapPages; i++){
-		//kprintf("Iteration Number %d ", i);
-			coremap[i].is_kernPage= 0;
-			coremap[i].ce_paddr=freepaddr+i*PAGE_SIZE;
-			coremap[i].is_allocated=0;
-			coremap[i].ce_vaddr= PADDR_TO_KVADDR(freepaddr+i*PAGE_SIZE);
+	//Store the number of coremap Pages
+//	int noOfcoremapPages= (freepaddr-firstpaddr)/PAGE_SIZE;
+	int num_coremapPages= (freepaddr-firstpaddr)/PAGE_SIZE;
+	kprintf("total pages %d \n",total_systempages);
+	kprintf("total coremap pages %d \n",num_coremapPages);
+	/*
+	 * Mark the coremap pages as status as fixed i.e. Set to 1
+	 * i.e. pages from firstaddr to freeaddr
+	 * i.e. pages from 0 to num_coremapPages
+	 */
+	for(int i=0;i<num_coremapPages;i++)
+	{
+		coremap[i].ce_paddr= firstpaddr+i*PAGE_SIZE;
+		coremap[i].ce_vaddr= PADDR_TO_KVADDR(freepaddr+i*PAGE_SIZE);
+		coremap[i].page_status=1;	//Signifying that it is fixed by kernel
 	}
-	//kprintf("Exiting VM_Bootstrap \n");
+
+	/*
+	 * Mark the pages other than coremap with status as free i.e. Set to 0
+	 * i.e. pages from firstaddr to freeaddr
+	 * i.e. pages from 0 to num_coremapPages
+	 */
+	for(int i=num_coremapPages;i<total_page_num;i++)
+	{
+		coremap[i].ce_paddr= firstpaddr+i*PAGE_SIZE;
+	//	coremap[i].ce_vaddr= PADDR_TO_KVADDR(freepaddr+i*PAGE_SIZE);
+		coremap[i].page_status=0;	//Signifying that it is free
+	}
+
+
+	/*
+	 * Setting the value for coremap_initialized to be 1
+	 * so that now alloc_kpages works differently before and after vm_bootstrap
+	 */
 	coremap_initialized= 1;
+	for(int i=20;i<25;i++)
+	{
+		kprintf("P ADDR  %d \n",coremap[i].ce_paddr);
+	//	kprintf("V ADDR  %d \n",coremap[i].ce_vaddr);
+		kprintf("Status  %d \n",coremap[i].page_status);
+
+	}
+	kprintf("Exiting VM_Bootstrap \n");
+
+
 }
 
 paddr_t
@@ -95,6 +152,8 @@ vaddr_t
 alloc_kpages(int npages)
 {
 	paddr_t pa;
+	vaddr_t va;
+
 	if(!coremap_initialized){
 		pa = getppages(npages);
 		if (pa==0) {
@@ -102,39 +161,167 @@ alloc_kpages(int npages)
 		}
 		return PADDR_TO_KVADDR(pa);
 	}
-	else{
-		int i=0;
-		bool available=1;
-		while(available){
-			if(coremap[i].is_kernPage || coremap[i].is_allocated){
-				i++;
-				continue;
-			}
-			else{
-				if(npages==1){
-					available =0;
-					coremap[i].is_allocated=1;
-					pa= coremap[i].ce_vaddr;
+
+	else
+	{
+		//Means that coremap has been initialized and now allocate pages from the coremap
+
+		bool allocation_condition=false;
+		lock_acquire(coremap_lock);
+		//Run the While the allocation condition is not true
+		while(!allocation_condition)
+		{
+			//First check if number of pages requested is 1
+			if(npages==1)
+			{
+
+				for(int i=0;i<total_systempages;i++)
+				{
+
+					//Check if we find a page whose status is free
+					if(coremap[i].page_status==0)
+					{
+
+						va = PADDR_TO_KVADDR(coremap[i].ce_paddr);
+						coremap[i].page_status=1;
+						//coremap[index].allocation_time=;
+						as_zero_region(coremap[i].ce_paddr,npages);
+						allocation_condition=true;
+						break;
+					}//End of If checking that page_status == 0
+
+
+				}//End of FOR looping over all the coremap entries checking for free page i.e. page_status =0
+				if(!allocation_condition)
+				{
+					for(int i=0;i<total_systempages;i++)
+							{
+								//Loop entered because no free page found
+								//Now check if the page is not fixed then replace it
+								if(coremap[i].page_status!=1)
+								{
+									va = PADDR_TO_KVADDR(coremap[i].ce_paddr);
+									coremap[i].page_status=1;
+									as_zero_region(coremap[i].ce_paddr,npages);
+									allocation_condition=true;
+									//coremap[index].allocation_time=;
+									allocation_condition=true;
+									break;
+								}
+							}
 				}
-				else{
-					for(int j=i; j<=i+npages; j++){
-						if(coremap[j].is_kernPage || coremap[j].is_allocated){
-							break;
-						}
-						else{
-							available=0;
-						}
-					}
-					pa= coremap[i].ce_vaddr;
+
+			}//End of IF check the number of npages == 1
+			else
+			{
+				//Meaning the number of pages requested is more than 1
+
+				int index = find_npages(npages);
+				if(index<0)
+					pa=0;
+				else
+				{
+					as_zero_region(coremap[index].ce_paddr,npages);
+					va = PADDR_TO_KVADDR(coremap[index].ce_paddr);
+
 				}
+
 			}
-		}
+		} // End of while checking the allocation_condition
+
+		lock_release(coremap_lock);
+
+		//Return the physical address retrieved from the coremap
+		return va;
 	}
-	if(pa==0){
-		return 0;
-	}
-	return pa;
 }
+
+int
+find_npages(int npages)
+{
+	int32_t startindex=-1;
+	bool found_range= false;
+	int32_t count=0;
+
+	//While code for checking it it is free
+	while(!found_range)
+	{
+		for(int i=startindex+1;i<total_systempages;i++)
+		{
+			if(coremap[i].page_status==0)
+			{
+				//Meaning that page at index 'i' is free
+				//CHeck till npages if it is free
+				for(int j=i;j< i+ npages;j++)
+				{
+					if(coremap[j].page_status == 0)
+					{
+						count++;
+					}
+					else
+						break;
+				}//End of for looping from i till npages
+
+				//Check if count is equal to npages
+				if(count==npages)
+				{
+					//Means contiguous n pages found
+					startindex=i;
+					found_range=true;
+
+				}
+				else
+				{
+					count=0;
+
+				}
+
+			}// End of if checking whether page is free
+		}// End of for loop over all the pages
+	}//end of main while
+
+	startindex=-1;
+	found_range= false;
+	count=0;
+
+	while(!found_range)
+	{
+		for(int i=startindex+1;i<total_systempages;i++)
+		{
+			if(coremap[i].page_status==0 || coremap[i].page_status!=1)
+			{
+				//Meaning that page at index 'i' is free
+				//CHeck till npages if it is free
+				for(int j=i;j< i+ npages;j++)
+				{
+					if(coremap[j].page_status == 0 || coremap[j].page_status!=1)
+					{
+						count++;
+					}
+					else
+						break;
+				}//End of for looping from i till npages
+
+				//Check if count is equal to npages
+				if(count==npages)
+				{
+					//Means contiguous n pages found
+					startindex=i;
+					found_range=true;
+				}
+				else
+				{
+					count=0;
+
+				}
+			}// End of if checking whether page is free
+		}// End of for loop over all the pages
+	}//end of main while
+
+
+	return startindex;
+}
+
 
 void
 free_kpages(vaddr_t addr)

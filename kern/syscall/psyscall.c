@@ -278,7 +278,6 @@ sys___kwaitpid(int processid,int *status,int options, int32_t *retval)
 	if(!(curthread->t_pid == process_array[processid]->parent_id))
 		return ECHILD;
 
-
 	if(process_array[processid]->exit_status==true)
 	{
 		lock_acquire(process_array[processid]->process_lock);
@@ -417,150 +416,96 @@ enter_process(void *tf,unsigned long addr)
 
 
 int
-sys___execv(char * p_name,char ** ar)
+sys___execv(char * p_name,char **ar )
 {
 	struct vnode *p_vnode;
-	vaddr_t  stackptr;
-	vaddr_t entrypoint;
+		vaddr_t  stackptr;
+		vaddr_t entrypoint;
 
-	int result;
-//	int counter;
-	size_t copied_length;
+		int result;
+		size_t copied_length;
+		char *kname;
 
-	char *kname; // name of the program copied in kernel
-	char *pname; //	name of pname
+		if(p_name==NULL)
+			return EFAULT;
 
-	pname = (char *) p_name;
+		if(ar==NULL)
+			return EFAULT;
 
-
-	if(p_name==NULL)
-		return EFAULT;
-
-	if(ar==NULL)
-		return EFAULT;
-
-	if(p_name == '\0')
-		return ENOEXEC;
+		if(p_name == '\0')
+			return ENOEXEC;
 
 
-	kname = (char *) kmalloc(sizeof(p_name));
-	if(kname==NULL)
-		return ENOMEM;
-
-	result = copyinstr((const_userptr_t)p_name,kname,sizeof(p_name),&copied_length);
-	if(copied_length == 1)
-	{
-		kfree(kname);
-		return EINVAL;
-	}
-
-	result = copyin((const_userptr_t)p_name,kname,sizeof(p_name));
-	if(result)
-	{
-		kfree(kname);
-		return result;
-	}
-
-	char **karguments = kmalloc(sizeof(char**));
-
-	result = copyin((const_userptr_t) ar,karguments,sizeof(karguments));
-	if(result)
-		return result;
-
-	int count =0;
-	char **karray= kmalloc(sizeof(char**));
-	size_t final_stack=0;
-
-	while(karguments[count] != NULL)
-	{
-		int string_length = strlen(karguments[count])+1;
-		int new_length = string_length;
-		if((string_length) % 4 != 0)
+		kname = (char *) kmalloc(sizeof(p_name));
+		result = copyinstr((const_userptr_t)p_name,kname,NAME_MAX,&copied_length);
+		if(copied_length == 1)
 		{
-			while(new_length%4 !=0)
-			{
-				new_length++;
-			}
-			for(int i=string_length;i<=new_length;i++)
-			{
-				karguments[count][i]= '\0';
-			}
+			kfree(kname);
+			return EINVAL;
 		}
-
-		char *k_des= kmalloc(sizeof(char*));
-		size_t final_length= (size_t)new_length;
-		size_t actual_length;
-		result=copyinstr((const_userptr_t)karguments[count], k_des, sizeof(karguments[count]), &actual_length );
 		if(result)
 		{
-			kfree(k_des);
+			kfree(kname);
 			return result;
 		}
-		if(count==0)
+
+		char **karguments1 = kmalloc(100*sizeof(char*));
+		result = copyin((const_userptr_t) ar,karguments1,(100*sizeof(char*)));
+		if(result)
 		{
-			final_stack= stackptr- final_length;
+			kfree(karguments1);
+			kfree(kname);
+			return result;
 		}
 		else
-		{
-			final_stack= (size_t)karray[count-1]- final_length;
-		}
+			kfree(karguments1);
 
-		size_t actual_length1;
-		result= copyoutstr(k_des, (userptr_t) (final_stack), final_length, &actual_length1);
+		char **arguments_kernel =(char **) kmalloc(sizeof(char**));
+		result = copyin((const_userptr_t) ar,arguments_kernel,(sizeof(char**)));
 		if(result)
 		{
+			kfree(kname);
+			kfree(arguments_kernel);
 			return result;
+
 		}
 
-		karray[count]=  (char*)(final_stack);
+		char **karguments = (char **) kmalloc(sizeof(char **));
 
-		count++;
-	}
+		int counter=0;
+		size_t actual_lenght1;
+		while(!(ar[counter]==NULL))
+		{
+			int string_length = strlen(ar[counter])+1;
+			karguments[counter] = (char *) kmalloc(sizeof(char) * string_length);
+			result = copyinstr((const_userptr_t) ar[counter],karguments[counter],string_length,&actual_lenght1);
+			if(result)
+			{
+				kfree(kname);
+				kfree(arguments_kernel);
+				return result;
+			}
 
-	karray[count]= (char*)NULL;
-	final_stack= (size_t)karray[count-1]- sizeof(karray);
-	result= copyout(karray, (userptr_t) (final_stack),sizeof(karray));
-	if(result)
-	{
-		return result;
-	}
+			counter++;
+		}
+		karguments[counter] = NULL;
 
-	result = as_define_stack(curthread->t_addrspace, &stackptr);
-	if (result) {
-			/* thread_exit destroys curthread->t_addrspace */
-		return result;
-	}
-
-
-
-	//Open the file.
 		result = vfs_open(kname, O_RDONLY, 0, &p_vnode);
 		if (result) {
 			return result;
 		}
 
-
-	/**
-	* Additions by Pratham Malik
-	*/
-
-		/* We should be a new thread. */
-		//Destroy the previous one
-
 		as_destroy(curthread->t_addrspace);
 
-
-//		KASSERT(curthread->t_addrspace == NULL);
-		/* Create a new address space. */
+		//Create a new address space.
 		curthread->t_addrspace = as_create();
-
 		if (curthread->t_addrspace==NULL)
 		{
 			vfs_close(p_vnode);
 			return ENOMEM;
 		}
 
-		/* Activate it. */
+		//Activate it.
 		as_activate(curthread->t_addrspace);
 
 		/* Load the executable. */
@@ -575,7 +520,7 @@ sys___execv(char * p_name,char ** ar)
 		/* Done with the file now. */
 		vfs_close(p_vnode);
 
-		/* Define the user stack in the address space */
+		//Get the pointer to the stack starting
 		result = as_define_stack(curthread->t_addrspace, &stackptr);
 		if (result)
 		{
@@ -583,13 +528,70 @@ sys___execv(char * p_name,char ** ar)
 			return result;
 		}
 
-		/* Warp to user mode. */
-			enter_new_process(1 /*argc*/, (userptr_t)(final_stack) /*userspace addr of argv*/,
-					final_stack, entrypoint);
+		//Now copy the arguments
+		int count =0;
+		char **karray= kmalloc(sizeof(char**));
+		size_t final_stack=0;
 
-//End of Additions by PM
+		while(karguments[count] != NULL)
+		{
+			int string_length = strlen(karguments[count])+1;
+			char *k_des= karguments[count];
+
+			int new_length = string_length;
+			if((string_length) % 4 != 0)
+			{
+				while(new_length%4 !=0)
+				{
+					new_length++;
+				}
+				for(int i=string_length;i<=new_length;i++)
+				{
+					k_des[i]= '\0';
+				}
+			}
+
+			//Argument aligned by 4
+
+			size_t final_length= (size_t)new_length;
+
+			if(count==0)
+			{
+				final_stack= stackptr- final_length;
+			}
+			else
+			{
+				final_stack= (size_t)karray[count-1]- final_length;
+			}
+
+			size_t actual_length1;
+			result= copyoutstr(k_des, (userptr_t) (final_stack), final_length, &actual_length1);
+			if(result)
+			{
+				return result;
+			}
+
+			karray[count]=  (char*)(final_stack);
+
+			count++;
+		} //End of While
+
+		karray[count]= (char*)NULL;
+		int value= count+1;
+		int arr_length = (value+1)*sizeof(char*);
+		final_stack= (size_t)karray[count-1]- arr_length;
+		result= copyout(karray, (userptr_t) (final_stack),arr_length);
+		if(result)
+		{
+			return result;
+		}
+
+
+			/* Warp to user mode. */
+				enter_new_process(count /*argc*/, (userptr_t)(final_stack) /*userspace addr of argv*/,
+						final_stack, entrypoint);
 
 		return 0;
 }
-
+//End of Additions by PM
 

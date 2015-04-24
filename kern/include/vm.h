@@ -38,6 +38,8 @@
 
 
 #include <machine/vm.h>
+#include <types.h>
+#include <synch.h>
 
 /* Fault-type arguments to vm_fault() */
 #define VM_FAULT_READ        0    /* A read was attempted */
@@ -76,18 +78,40 @@ int
 vm_fault(int faulttype, vaddr_t faultaddress);
 
 /*
- * Added By Mohit
+ * Added By Mohit & Pratham
  */
 
 struct coremap_entry{
-	paddr_t ce_paddr;
-	vaddr_t ce_vaddr;
-	bool is_allocated:1;
-	bool is_kernPage:1;
-	bool is_dirty:1;
+	paddr_t ce_paddr;		//Physical Address of Page
+	vaddr_t ce_vaddr;		//Virtual Address of Page
+//	bool is_allocated:1;	//Set to 1 if Page is allocated
+//	bool is_kernPage:1;
+//	bool is_dirty:1;
+
+	/**
+	 * Value settings for page status
+	 * Set to 0 if page status is Free
+	 * Set to 1 if page status is Fixed
+	 * Set to 2 if page status is Dirty
+	 * Set to 3 if page status is Clean
+	 */
+	int32_t page_status;
+	time_t allocation_time;
 };
 
-struct coremap_entry *coremap;
-bool coremap_initialized;
+extern struct coremap_entry *coremap;
+extern bool coremap_initialized;
+
+//Variable to store the total number of pages in the coremap entry
+extern int32_t total_systempages;
+
+//Global variable for coremap_lock
+extern struct lock *coremap_lock;
+
+//Function to find continuous npages from coremap array entry
+int
+find_npages(int npages);
+
+
 
 #endif /* _VM_H_ */

@@ -53,37 +53,10 @@
  */
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
-
 void
 vm_bootstrap(void)
 {
 	/* Do nothing. */
-	paddr_t firstpaddr, lastpaddr;
-	ram_getsize(&firstpaddr, &lastpaddr);
-	int total_page_num = (lastpaddr- 0) / PAGE_SIZE;
-	/* pages should be a kernel virtual address !!  */
-	coremap = (struct coremap_entry*)PADDR_TO_KVADDR(firstpaddr);
-	paddr_t freeaddr = firstpaddr + total_page_num * sizeof(struct coremap_entry);
-
-	int kpages= (freeaddr-0)/PAGE_SIZE;
-
-	for(int i=0; i<total_page_num; i++){
-		kprintf("Iteration Number %d ", i);
-		if(i< kpages){
-				coremap[i].is_kernPage= 1;
-				coremap[i].is_allocated= 1;
-				coremap[i].ce_page= (struct page_struct*)PADDR_TO_KVADDR(i*PAGE_SIZE);
-				coremap[i].ce_page->ps_paddr=i*PAGE_SIZE;
-		}
-		else{
-			coremap[i].is_kernPage= 0;
-			coremap[i].ce_page= (struct page_struct*)PADDR_TO_KVADDR(i*PAGE_SIZE);
-			coremap[i].ce_page->ps_paddr=i*PAGE_SIZE;
-			coremap[i].is_allocated=0;
-		}
-	}
-	kprintf("Exiting VM_Bootstrap \n");
-	coremap_initialized= 1;
 }
 
 static
@@ -105,38 +78,9 @@ vaddr_t
 alloc_kpages(int npages)
 {
 	paddr_t pa;
-	if(!coremap_initialized){
-		pa = getppages(npages);
-		if (pa==0) {
-			return 0;
-		}
-	}
-	else{
-		int i=0;
-		bool available=1;
-		while(available){
-		if(coremap[i].is_kernPage || coremap[i].is_allocated){
-			i++;
-			continue;
-		}
-		else{
-			if(npages==1){
-				available =0;
-				return coremap[i].ce_page->ps_paddr;
-			}
-			else{
-				for(int j=i; j<=i+npages; j++){
-					if(coremap[j].is_kernPage || coremap[j].is_allocated){
-						break;
-					}
-					else{
-						available=0;
-					}
-				}
-			return coremap[i].ce_page->ps_paddr;
-			}
-		}
-		}
+	pa = getppages(npages);
+	if (pa==0) {
+		return 0;
 	}
 	return PADDR_TO_KVADDR(pa);
 }
