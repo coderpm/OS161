@@ -125,6 +125,10 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		as->regions->write_permission = writeable;
 		as->regions->execute_permission=executable;
 
+		//Set the permissions in other variable
+		int sum=readable+writeable+executable;
+		as->regions->set_permissions=sum;
+
 		as->regions->next_region = NULL;
 	}
 	else
@@ -145,6 +149,12 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		end->execute_permission=executable;
 
 		end->next_region = NULL;
+
+		//Set the permissions in other variable
+		int sum = readable+writeable+executable;
+		end->set_permissions=sum;
+
+
 
 		as->regions->next_region = end;
 	}
@@ -172,9 +182,20 @@ as_zero_region(paddr_t paddr, unsigned npages)
 int
 as_prepare_load(struct addrspace *as)
 {
+	/*if(as->regions!=NULL)
+	{
+		//Iterate over the regions
 
-	//Iterate over the regions
+		while(as->regions !=NULL)
+		{
+			as->regions->execute_permission=1;
 
+			as->regions->read_permission=4;
+			as->regions->write_permission=2;
+
+			as->regions=as->regions->next_region;
+		}
+	}*/
 
 	(void) as;
 	return 0;
@@ -184,7 +205,35 @@ as_prepare_load(struct addrspace *as)
 int
 as_complete_load(struct addrspace *as)
 {
-	(void)as;
+	int sum;
+	//Iterate over the regions and reset the permissions
+		//Iterate over the regions
+	while(as->regions !=NULL)
+	{
+
+		//Get the old permission
+		sum = as->regions->set_permissions;
+
+		if((sum&1) != 0)
+			as->regions->execute_permission=1;
+		else
+			as->regions->execute_permission=0;
+
+		if((sum&2) != 0)
+			as->regions->write_permission=2;
+		else
+			as->regions->write_permission=0;
+
+		if((sum&4) != 0)
+			as->regions->read_permission=4;
+		else
+			as->regions->read_permission=0;
+
+
+		as->regions=as->regions->next_region;
+
+		}
+
 	return 0;
 }
 

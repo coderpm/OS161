@@ -61,10 +61,11 @@ struct addr_regions
 	size_t region_numpages;		//Number of pages assigned for the region
 
 	//Permissions -- Set to 1 if permission given and 0 if permission not given
-	int read_permission:1;
-	int write_permission:1;
-	int execute_permission:1;
+	int read_permission;
+	int write_permission;
+	int execute_permission;
 
+	int set_permissions:3;		//Used for saving the old permissions - to be retrieved using bit manipulation
 	struct addr_regions *next_region;		//Link to the next region as we don't know the number of regions
 
 };
