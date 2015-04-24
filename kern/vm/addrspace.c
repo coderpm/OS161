@@ -57,7 +57,7 @@ as_create(void)
 	}
 
 	as->as_stackpbase=0;
-	as->heap_end=0;
+//	as->heap_end=0;
 	as->heap_start=0;
 
 	as->lock_page_table = lock_create("page_table");
@@ -129,15 +129,36 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 	else
 	{
 		//regions is not NULL -- meaning that some region has been added before
+		//Iterate to reach the end
+		struct addr_regions *end;
+		end = (struct addr_regions *) kmalloc(sizeof(struct addr_regions));
+		while((as->regions->next_region) != NULL)
+		{
+			end = as->regions->next_region;
+		}
+
+		end->va_start = vaddr;
+		end->region_numpages= npages;
+		end->read_permission=readable;
+		end->write_permission = writeable;
+		end->execute_permission=executable;
+
+		end->next_region = NULL;
+
+		as->regions->next_region = end;
 	}
 
+
+	//Now declare the heap start
+	as->heap_start = (vaddr+sz) & PAGE_FRAME;
 
 	/*
 	 * Support for more than two regions is not available.
 	 */
 
 	//kprintf("dumbvm: Warning: too many regions\n");
-		return EUNIMP;
+
+	return 0;
 }
 
 void
@@ -150,6 +171,9 @@ as_zero_region(paddr_t paddr, unsigned npages)
 int
 as_prepare_load(struct addrspace *as)
 {
+
+	//Iterate over the regions
+
 
 	(void) as;
 	return 0;
