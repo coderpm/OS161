@@ -125,7 +125,7 @@ runprogram(char *progname, char **args)
 	size_t final_stack=0;
 	int string_length = strlen(progname)+1;
 	int new_length = string_length;
-	//int count =1;
+
 	int k_count=0;
 	if((string_length) % 4 != 0)
 		{
@@ -190,6 +190,7 @@ runprogram(char *progname, char **args)
 		}*/
 
 		//size_t actual_length;
+
 	karray[k_count+1]=  (char*)NULL;
 	int value= k_count+1;
 	int arr_length = (value+1)*sizeof(char*);

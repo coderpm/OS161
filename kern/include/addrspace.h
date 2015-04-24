@@ -60,19 +60,57 @@ struct addrspace {
 
         paddr_t as_stackpbase;
 #else
-        vaddr_t as_vbase1;
-        paddr_t as_pbase1;
-        size_t as_npages1;
-
-        vaddr_t as_vbase2;
-        paddr_t as_pbase2;
-        size_t as_npages2;
-
-        paddr_t as_stackpbase;
         /* Put stuff here for your VM system */
-#endif
+
+        struct page_table_entry *page_table;
+        paddr_t heap_start;
+        paddr_t heap_end;
+        paddr_t as_stackpbase;
+
+        struct addr_regions *regions;		//Link list of all the regions
+        struct lock *lock_page_table;		//Lock for accessing the page table
+
+        #endif
 };
 
+/**
+ * Added by Pratham Malik for ASST3 - VM
+ */
+struct page_table_entry
+{
+	paddr_t pa;			//Stores the physical address to which page is mapped
+	vaddr_t va;			//Stores the virtual address to which page is mapped
+	int permissions;	//Stores the permissions for the page table entry
+	int present:1;		//Variable for checking whether the page is in physical memory or disk
+
+	struct page_table_entry *page_table;
+};
+
+//Define Regions
+struct addr_regions
+{
+	vaddr_t va_start;			//Virtual address of the start of region
+	size_t region_numpages;		//Number of pages assigned for the region
+
+	//Permissions -- Set to 1 if permission given and 0 if permission not given
+
+	int read_permission:1;
+	int write_permission:1;
+	int execute_permission:1;
+
+	struct addr_regions *next_region;		//Link to the next region as we don't know the number of regions
+};
+
+/**
+ * Declare functions to do the following:
+ * 1. add a page table entry
+ * 2. delete a page table entry
+ * 3. insert a page table entry
+ */
+
+
+
+//ENd of additions of structures and variables and functions by PM
 /*
  * Functions in addrspace.c:
  *
