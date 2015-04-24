@@ -347,7 +347,8 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {
-
+	(void) faultaddress;
+	faulttype=0;
 	return EFAULT;
 }
 

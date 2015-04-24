@@ -60,15 +60,17 @@ struct addrspace {
 
         paddr_t as_stackpbase;
 #else
+        /* Put stuff here for your VM system */
+
         struct page_table_entry *page_table;
         paddr_t heap_start;
         paddr_t heap_end;
         paddr_t as_stackpbase;
 
-        struct addr_regions;
+        struct addr_regions *regions;		//Link list of all the regions
         struct lock *lock_page_table;		//Lock for accessing the page table
-        /* Put stuff here for your VM system */
-#endif
+
+        #endif
 };
 
 /**
@@ -87,10 +89,16 @@ struct page_table_entry
 //Define Regions
 struct addr_regions
 {
-	vaddr_t va_start;
-	vaddr_t va_end;
-	int size;		//offset the till the region end or have
+	vaddr_t va_start;			//Virtual address of the start of region
+	size_t region_numpages;		//Number of pages assigned for the region
 
+	//Permissions -- Set to 1 if permission given and 0 if permission not given
+
+	int read_permission:1;
+	int write_permission:1;
+	int execute_permission:1;
+
+	struct addr_regions *next_region;		//Link to the next region as we don't know the number of regions
 };
 
 /**
