@@ -65,7 +65,7 @@ struct addr_regions
 	int write_permission;
 	int execute_permission;
 
-	int set_permissions:3;		//Used for saving the old permissions - to be retrieved using bit manipulation
+	int set_permissions;		//Used for saving the old permissions - to be retrieved using bit manipulation
 	struct addr_regions *next_region;		//Link to the next region as we don't know the number of regions
 
 };

@@ -188,11 +188,14 @@ as_zero_region(paddr_t paddr, unsigned npages)
 int
 as_prepare_load(struct addrspace *as)
 {
+
+	struct addr_regions *head;
+	 head = as->regions;
+
 	if(as->regions!=NULL)
 	{
 		//Iterate over the regions
-		struct addr_regions *end = (struct addr_regions *) kmalloc(sizeof(struct addr_regions));
-		end= as->regions;
+
 		while(as->regions !=NULL)
 		{
 			as->regions->execute_permission=1;
@@ -202,10 +205,10 @@ as_prepare_load(struct addrspace *as)
 
 			as->regions=as->regions->next_region;
 		}
-		as->regions=end;
-	}
 
-	//(void) as;
+	}
+		as->regions = head;
+
 	return 0;
 }
 
@@ -214,6 +217,8 @@ int
 as_complete_load(struct addrspace *as)
 {
 	int sum;
+	struct addr_regions *head;
+		 head = as->regions;
 	//Iterate over the regions and reset the permissions
 		//Iterate over the regions
 	while(as->regions !=NULL)
@@ -241,6 +246,7 @@ as_complete_load(struct addrspace *as)
 		as->regions=as->regions->next_region;
 
 		}
+	as->regions = head;
 
 	return 0;
 }
