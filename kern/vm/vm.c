@@ -47,6 +47,8 @@
 
 /* under dumbvm, always have 48k of user stack */
 #define DUMBVM_STACKPAGES    12
+
+
 /*
  * Wrap rma_stealmem in a spinlock.
  */
@@ -101,8 +103,8 @@ vm_bootstrap(void)
 	for(int i=0;i<num_coremapPages;i++)
 	{
 		coremap[i].ce_paddr= firstpaddr+i*PAGE_SIZE;
-		coremap[i].ce_vaddr= PADDR_TO_KVADDR(freepaddr+i*PAGE_SIZE);
 		coremap[i].page_status=1;	//Signifying that it is fixed by kernel
+
 	}
 
 	/*
@@ -110,10 +112,13 @@ vm_bootstrap(void)
 	 * i.e. pages from firstaddr to freeaddr
 	 * i.e. pages from 0 to num_coremapPages
 	 */
+
 	for(int i=num_coremapPages;i<total_page_num;i++)
 	{
 		coremap[i].ce_paddr= firstpaddr+i*PAGE_SIZE;
 		coremap[i].page_status=0;	//Signifying that it is free
+		coremap[i].chunk_allocated=0;
+		coremap[i].as=NULL;
 	}
 
 
@@ -123,13 +128,7 @@ vm_bootstrap(void)
 	 */
 
 	coremap_initialized= 1;
-	for(int i=20;i<25;i++)
-	{
-		kprintf("P ADDR  %d \n",coremap[i].ce_paddr);
-		kprintf("Status  %d \n",coremap[i].page_status);
-
-	}
-	kprintf("Exiting VM_Bootstrap \n");
+//	kprintf("Exiting VM_Bootstrap \n");
 
 
 }
@@ -148,6 +147,7 @@ getppages(unsigned long npages)
 }
 
 /* Allocate/free some kernel-space virtual pages */
+
 vaddr_t
 alloc_kpages(int npages)
 {
@@ -184,12 +184,99 @@ alloc_kpages(int npages)
 
 						va = PADDR_TO_KVADDR(coremap[i].ce_paddr);
 						coremap[i].page_status=1;
+
+						as_zero_region(coremap[i].ce_paddr,npages);
+						allocation_condition=true;
+						coremap[i].chunk_allocated=1;
+						coremap[i].as=curthread->t_addrspace;
+						break;
+					}//End of If checking that page_status == 0
+
+
+				}//End of FOR looping over all the coremap entries checking for free page i.e. page_status =0
+				if(!allocation_condition)
+				{
+					for(int i=0;i<total_systempages;i++)
+							{
+								//Loop entered because no free page found
+								//Now check if the page is not fixed then replace it
+								if(coremap[i].page_status!=1)
+								{
+									va = PADDR_TO_KVADDR(coremap[i].ce_paddr);
+									coremap[i].page_status=1;
+									as_zero_region(coremap[i].ce_paddr,npages);
+									allocation_condition=true;
+									allocation_condition=true;
+									coremap[i].chunk_allocated=1;
+									coremap[i].as=curthread->t_addrspace;
+									break;
+								}
+							}
+				}
+			}//End of IF check the number of npages == 1
+			else
+			{
+				//Meaning the number of pages requested is more than 1
+
+				int index = find_npages(npages);
+				if(index<0)
+					pa=0;
+				else
+				{
+					as_zero_region(coremap[index].ce_paddr,npages);
+					va = PADDR_TO_KVADDR(coremap[index].ce_paddr);
+				}
+
+			}
+		} // End of while checking the allocation_condition
+
+		lock_release(coremap_lock);
+
+		//Return the physical address retrieved from the coremap
+		return va;
+	}
+}
+
+vaddr_t
+alloc_upages(int npages)
+{
+	paddr_t pa;
+	vaddr_t va;
+
+	if(!coremap_initialized)
+	{
+		pa = getppages(npages);
+		if (pa==0)
+		{
+			return 0;
+		}
+		return PADDR_TO_KVADDR(pa);
+	}
+
+	else
+	{
+		//Means that coremap has been initialized and now allocate pages from the coremap
+
+		bool allocation_condition=false;
+		lock_acquire(coremap_lock);
+		//Run the While the allocation condition is not true
+		while(!allocation_condition)
+		{
+			//First check if number of pages requested is 1
+			if(npages==1)
+			{
+				for(int i=0;i<total_systempages;i++)
+				{
+					//Check if we find a page whose status is free
+					if(coremap[i].page_status==0)
+					{
+						va = PADDR_TO_KVADDR(coremap[i].ce_paddr);
+						coremap[i].page_status=1;
 						//coremap[index].allocation_time=;
 						as_zero_region(coremap[i].ce_paddr,npages);
 						allocation_condition=true;
 						break;
 					}//End of If checking that page_status == 0
-
 
 				}//End of FOR looping over all the coremap entries checking for free page i.e. page_status =0
 				if(!allocation_condition)
@@ -210,7 +297,6 @@ alloc_kpages(int npages)
 								}
 							}
 				}
-
 			}//End of IF check the number of npages == 1
 			else
 			{
@@ -223,7 +309,8 @@ alloc_kpages(int npages)
 				{
 					as_zero_region(coremap[index].ce_paddr,npages);
 					va = PADDR_TO_KVADDR(coremap[index].ce_paddr);
-
+					coremap[index].chunk_allocated=npages;
+					coremap[index].as=curthread->t_addrspace;
 				}
 
 			}
@@ -347,8 +434,9 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {
-	(void) faultaddress;
 	faulttype=0;
+	(void) faultaddress;
+
 	return EFAULT;
 }
 

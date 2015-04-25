@@ -56,8 +56,10 @@ as_create(void)
 		return NULL;
 	}
 
-	as->as_stackpbase=0;
-//	as->heap_end=0;
+	as->stackbase_start=0;
+	as->stackbase_end=0;
+
+	as->heap_end=0;
 	as->heap_start=0;
 
 	as->lock_page_table = lock_create("page_table");
@@ -119,11 +121,10 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 
 		//Allocate all parameters and equate to the new region
 		as->regions = (struct addr_regions *) kmalloc(sizeof(struct addr_regions));
+
 		as->regions->va_start = vaddr;
 		as->regions->region_numpages= npages;
-		as->regions->read_permission=readable;
-		as->regions->write_permission = writeable;
-		as->regions->execute_permission=executable;
+
 
 		//Set the permissions in other variable
 		int sum=readable+writeable+executable;
@@ -137,6 +138,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		//Iterate to reach the end
 		struct addr_regions *end;
 		end = (struct addr_regions *) kmalloc(sizeof(struct addr_regions));
+
 		while((as->regions->next_region) != NULL)
 		{
 			end = as->regions->next_region;
@@ -144,9 +146,6 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 
 		end->va_start = vaddr;
 		end->region_numpages= npages;
-		end->read_permission=readable;
-		end->write_permission = writeable;
-		end->execute_permission=executable;
 
 		end->next_region = NULL;
 
@@ -154,20 +153,16 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		int sum = readable+writeable+executable;
 		end->set_permissions=sum;
 
-
-
 		as->regions->next_region = end;
 	}
 
-
-	//Now declare the heap start
+	//Now declare the heap start and heap end
 	as->heap_start = (vaddr+sz) & PAGE_FRAME;
+	as->heap_end = (vaddr+sz) & PAGE_FRAME;
 
-	/*
-	 * Support for more than two regions is not available.
-	 */
-
-	//kprintf("dumbvm: Warning: too many regions\n");
+	//Declare the Stack start and stack end
+	as->stackbase_start = USERSTACK;
+	as->stackbase_end = USERSTACK - VM_STACKPAGES * PAGE_SIZE;
 
 	return 0;
 }
@@ -190,11 +185,6 @@ as_prepare_load(struct addrspace *as)
 
 		while(as->regions !=NULL)
 		{
-			as->regions->execute_permission=1;
-
-			as->regions->read_permission=4;
-			as->regions->write_permission=2;
-
 			as->regions=as->regions->next_region;
 		}
 
@@ -218,7 +208,9 @@ as_complete_load(struct addrspace *as)
 
 		//Get the old permission
 		sum = as->regions->set_permissions;
+//TODO:: DECIDE WHOM TO GIVE PERMISSIONS-- REGIONS OR THE PAGE AND THEN RELOAD THEM HERE
 
+/*
 		if((sum&1) != 0)
 			as->regions->execute_permission=1;
 		else
@@ -233,6 +225,7 @@ as_complete_load(struct addrspace *as)
 			as->regions->read_permission=4;
 		else
 			as->regions->read_permission=0;
+*/
 
 
 		as->regions=as->regions->next_region;
@@ -246,7 +239,7 @@ as_complete_load(struct addrspace *as)
 int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
-	KASSERT(as->as_stackpbase != 0);
+	KASSERT(as->stackbase_start!= 0);
 
 	*stackptr = USERSTACK;
 	return 0;
@@ -260,5 +253,3 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	(void)ret;
 	return 0;
 }
-
-

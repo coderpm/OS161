@@ -43,6 +43,10 @@ struct vnode;
 /**
  * Added by Pratham Malik for ASST3 - VM
  */
+
+//Declaring the same number of stack pages as now of now -- might change later
+#define VM_STACKPAGES    12
+
 struct page_table_entry
 {
 	paddr_t pa;			//Stores the physical address to which page is mapped
@@ -50,7 +54,7 @@ struct page_table_entry
 	int permissions;	//Stores the permissions for the page table entry
 	int present:1;		//Variable for checking whether the page is in physical memory or disk
 
-	struct page_table_entry *page_table;
+	struct page_table_entry *next;
 };
 
 //Define Regions
@@ -58,12 +62,9 @@ struct addr_regions
 {
 
 	vaddr_t va_start;			//Virtual address of the start of region
-	size_t region_numpages;		//Number of pages assigned for the region
+	int region_numpages;		//Number of pages assigned for the region
 
 	//Permissions -- Set to 1 if permission given and 0 if permission not given
-	int read_permission;
-	int write_permission;
-	int execute_permission;
 
 	int set_permissions;		//Used for saving the old permissions - to be retrieved using bit manipulation
 	struct addr_regions *next_region;		//Link to the next region as we don't know the number of regions
@@ -104,10 +105,13 @@ struct addrspace {
 
         struct page_table_entry *page_table;
         vaddr_t heap_start;
-        paddr_t as_stackpbase;
+        vaddr_t heap_end;
+        vaddr_t stackbase_start;
+        vaddr_t stackbase_end;
 
         struct addr_regions *regions;		//Link list of all the regions
         struct lock *lock_page_table;		//Lock for accessing the page table
+
 
         #endif
 };
