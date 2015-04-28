@@ -341,6 +341,8 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	}
 
+	//INCLUDE STACK BASE AND TOP CHECKS LATER
+
 //	 Assert that the address space has been set up properly.
 	KASSERT(as->heap_start != 0);
 	KASSERT(as->heap_end != 0);
