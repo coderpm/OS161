@@ -408,6 +408,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 				if(paddr>0)
 				{
 					address_found=true;
+					break;
 				}
 				else
 					return EFAULT;
@@ -419,6 +420,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 				if(paddr>0)
 				{
 					address_found=true;
+					break;
 				}
 				else
 					return EFAULT;
@@ -436,6 +438,10 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 						{
 							//mark found as true
 							address_found=true;
+							//Assign the region back to head
+							as->regions = head;
+
+							break;
 						}
 						else
 							return EFAULT;
@@ -720,13 +726,15 @@ alloc_upages()
 		 * then evict any user page (change this during swapping)
 		 * FIND To be EVICTED PAGE - Call find_oldest_page to find the oldest page in the coremap
 		 */
+		if(!(page_found))
+		{
+			index = find_oldest_page();
 
-		index = find_oldest_page();
+			/* Now EVICT the page at the index returned from the find_oldest_page by calling FUNCTION: evict_coremap_entry */
 
-		/* Now EVICT the page at the index returned from the find_oldest_page by calling FUNCTION: evict_coremap_entry */
-
-		evict_coremap_entry(index);
-
+			evict_coremap_entry(index);
+			page_found = true;
+		}
 
 
 	}//End of while loop in page_found

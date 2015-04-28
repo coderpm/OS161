@@ -163,8 +163,8 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 	as->heap_end = (vaddr+sz) & PAGE_FRAME;
 
 	//Declare the Stack start and stack end
-//	as->stackbase_top = (USERSTACK);
-//	as->stackbase_base =  USERSTACK - (VM_STACKPAGES * PAGE_SIZE);
+	as->stackbase_top = (USERSTACK);
+	as->stackbase_base =  USERSTACK - (VM_STACKPAGES * PAGE_SIZE);
 
 	return 0;
 }
