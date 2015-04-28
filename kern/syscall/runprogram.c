@@ -55,25 +55,11 @@
  * Calls vfs_open on progname and thus may destroy it.
  */
 int
-runprogram(char *progname, char **args)
+runprogram(char *progname)
 {
 	struct vnode *v;
 	vaddr_t entrypoint, stackptr;
 	int result;
-
-	if(args==NULL)
-	{
-		//Do Nothing
-
-	}
-	else
-	{
-		char **user_args;
-		user_args = kmalloc(sizeof(char **));
-
-		user_args[0]=args[0];
-
-	}
 
 	char k_des[PATH_MAX];
 	memcpy(k_des, progname,PATH_MAX);
@@ -228,12 +214,14 @@ runprogram(char *progname, char **args)
 
 
 
+/*
 //End of Additions by MA
 	result = as_define_stack(curthread->t_addrspace, &stackptr);
 		if (result) {
-			/* thread_exit destroys curthread->t_addrspace */
+			 thread_exit destroys curthread->t_addrspace
 			return result;
 		}
+*/
 
 	/* Warp to user mode. */
 	enter_new_process(1 /*argc*/, (userptr_t)(final_stack) /*userspace addr of argv*/,

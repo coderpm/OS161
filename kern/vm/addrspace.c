@@ -163,8 +163,8 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 	as->heap_end = (vaddr+sz) & PAGE_FRAME;
 
 	//Declare the Stack start and stack end
-//	as->stackbase_top = (USERSTACK);
-//	as->stackbase_base =  USERSTACK - (VM_STACKPAGES * PAGE_SIZE);
+	as->stackbase_top = (USERSTACK);
+	as->stackbase_base =  USERSTACK - (VM_STACKPAGES * PAGE_SIZE);
 
 	return 0;
 }
@@ -262,7 +262,106 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
-	(void) old;
-	(void)ret;
-	return 0;
+	struct addrspace *new;
+
+		//Creating new address space calling as create, which will initialize lock also;
+		new = as_create();
+		if (new==NULL) {
+			return ENOMEM;
+		}
+
+		//Coping addr_regions to new address space addr_regions structure
+		struct addr_regions *newregionshead;
+		struct addr_regions *oldregionshead;
+			 oldregionshead = old->regions;
+		int count=0;
+		while(old->regions !=NULL)
+		{
+			if(count==0){
+				new->regions=(struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
+				newregionshead= new->regions;
+				new->regions->va_start= old->regions->va_start;
+				new->regions->region_numpages= old->regions->region_numpages;
+				new->regions->set_permissions= old->regions->set_permissions;
+				new->regions->va_end= old->regions->va_end;
+				old->regions= old->regions->next_region;
+				if(old->regions!= NULL){
+					new->regions->next_region= (struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
+					new->regions= new->regions->next_region;
+				}
+				else{
+					new->regions->next_region= NULL;
+				}
+			}
+			else{
+				new->regions->va_start= old->regions->va_start;
+				new->regions->region_numpages= old->regions->region_numpages;
+				new->regions->set_permissions= old->regions->set_permissions;
+				new->regions->va_end= old->regions->va_end;
+				old->regions= old->regions->next_region;
+				if(old->regions!= NULL){
+					new->regions->next_region= (struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
+					new->regions= new->regions->next_region;
+				}
+				else{
+					new->regions->next_region= NULL;
+				}
+			}
+		count++;
+		}
+		//Setting the pointer to the start of the list
+		old->regions= oldregionshead;
+		new->regions= newregionshead;
+
+		//Coping page table to new address space page table structure
+		struct page_table_entry *new_ptentry_head;
+		struct page_table_entry *old_ptentry_head;
+		old_ptentry_head = old->page_table;
+		int count_pt= 0;
+		while(old->page_table != NULL){
+			if(count_pt==0){
+				new->page_table=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
+				new_ptentry_head= new->page_table;
+				new->page_table->pa= old->page_table->pa;
+				new->page_table->permissions= old->page_table->permissions;
+				new->page_table->present= old->page_table->present;
+				new->page_table->va= old->page_table->va;
+				old->page_table= old->page_table->next;
+				if(old->page_table!= NULL){
+					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
+					new->page_table= new->page_table->next;
+				}
+				else{
+					new->page_table->next= NULL;
+				}
+			}
+			else{
+				new->page_table->pa= old->page_table->pa;
+				new->page_table->permissions= old->page_table->permissions;
+				new->page_table->present= old->page_table->present;
+				new->page_table->va= old->page_table->va;
+				old->page_table= old->page_table->next;
+				if(old->page_table!= NULL){
+					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
+					new->page_table= new->page_table->next;
+				}
+				else{
+					new->page_table->next= NULL;
+				}
+			}
+			count_pt++;
+		}
+		//Setting the head to the start of the list
+		old->page_table= old_ptentry_head;
+		new->page_table= new_ptentry_head;
+
+		//Coping rest of the remaining entries in the old structure to new structure
+		new->heap_end= old->heap_end;
+		new->heap_start= old->heap_start;
+		new->stackbase_base= old->stackbase_base;
+		new->stackbase_top= old->stackbase_top;
+
+
+		*ret = new;
+		return 0;
 }
