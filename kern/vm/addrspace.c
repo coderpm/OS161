@@ -187,13 +187,13 @@ as_zero_region(paddr_t paddr, unsigned npages)
 int
 as_prepare_load(struct addrspace *as)
 {
-	kprintf("Stack TOP is %d",as->stackbase_top);
+	/*kprintf("Stack TOP is %d",as->stackbase_top);
 	kprintf("\nStack Base is %d",as->stackbase_base);
 
 	kprintf("\nHeap Start is %d",as->heap_start);
 	kprintf("\nHeap End is %d",as->heap_end);
 
-
+*/
 
 	struct addr_regions *head;
 	 head = as->regions;
@@ -203,8 +203,10 @@ as_prepare_load(struct addrspace *as)
 
 		while(as->regions !=NULL)
 		{
+/*
 			kprintf("\nRegion Start is %d",as->regions->va_start);
 			kprintf("\nRegion End is %d",as->regions->va_end);
+*/
 
 			as->regions=as->regions->next_region;
 		}
