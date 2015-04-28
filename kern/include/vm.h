@@ -83,10 +83,6 @@ vm_fault(int faulttype, vaddr_t faultaddress);
 
 struct coremap_entry{
 	paddr_t ce_paddr;		//Physical Address of Page
-	vaddr_t ce_vaddr;		//Virtual Address of Page
-//	bool is_allocated:1;	//Set to 1 if Page is allocated
-//	bool is_kernPage:1;
-//	bool is_dirty:1;
 
 	/**
 	 * Value settings for page status
@@ -96,7 +92,8 @@ struct coremap_entry{
 	 * Set to 3 if page status is Clean
 	 */
 	int32_t page_status;
-	pid_t process_id;		//Stores the process id of the process which is accessing the coremap entry
+	uint32_t time;
+	struct addrspace *as; 	//Stores the address space pointer of the process which is mapped to the coremap entry
 	int chunk_allocated;	//Stores the number of chunk allocated so that it is easy to free
 };
 
@@ -105,6 +102,7 @@ extern bool coremap_initialized;
 
 //Variable to store the total number of pages in the coremap entry
 extern int32_t total_systempages;
+extern int32_t coremap_pages;
 
 //Global variable for coremap_lock
 extern struct lock *coremap_lock;
@@ -113,6 +111,12 @@ extern struct lock *coremap_lock;
 int
 find_npages(int npages);
 
+//Function to allocate user level pages
+vaddr_t alloc_upages(int npages);
+
+//Function to remove user level pages
+void
+free_upages(vaddr_t addr);
 
 
 #endif /* _VM_H_ */

@@ -74,6 +74,7 @@ getppages(unsigned long npages)
 }
 
 /* Allocate/free some kernel-space virtual pages */
+
 vaddr_t 
 alloc_kpages(int npages)
 {
