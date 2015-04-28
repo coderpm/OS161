@@ -400,7 +400,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	while(!(address_found))
 	{
 			//First check within the stack bases
-			if(faultaddress >= stackbase && faultaddress < stacktop)
+			if(faultaddress >= stackbase && faultaddress <= stacktop)
 			{
 
 				//Means faultaddress lies in stackpage
@@ -413,7 +413,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 				else
 					return EFAULT;
 			}
-			else if(faultaddress >= as->heap_start && faultaddress < as->heap_end)
+			else if(faultaddress >= as->heap_start && faultaddress <= as->heap_end)
 			{
 				//meaning lies in the heap region
 				paddr = handle_address(faultaddress,permissions,as);
@@ -431,7 +431,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 				//Now Iterate over the regions and check whether it exists in one of the region
 				while(as->regions !=NULL)
 				{
-					if(faultaddress >= as->regions->va_start && faultaddress < as->regions->va_end)
+					if(faultaddress >= as->regions->va_start && faultaddress <= as->regions->va_end)
 					{
 						paddr = handle_address(faultaddress,as->regions->set_permissions,as);
 						if(paddr>0)
@@ -465,8 +465,19 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	}//End of while checking whether address found for the fault address
 
 
+	KASSERT((paddr & PAGE_FRAME) == paddr);
+
 //	 Disable interrupts on this CPU while frobbing the TLB.
 	spl = splhigh();
+
+	ehi = faultaddress;
+	elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
+
+	tlb_random(ehi,elo);
+
+	splx(spl);
+	return 0;
+
 
 	for (i=0; i<NUM_TLB; i++)
 	{
@@ -484,12 +495,11 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		return 0;
 	}
 
+
 	kprintf("dumbvm: Ran out of TLB entries - cannot handle page fault\n");
 		splx(spl);
 		return EFAULT;
 
-	faulttype=0;
-		(void) faultaddress;
 	return ENOMEM;
 }
 
@@ -539,6 +549,9 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as)
 				{
 					//present bit is true
 					pa = as->page_table->pa;
+
+					//Re-assign back the head
+					as->page_table = head;
 
 					lock_release(as->lock_page_table);
 					return pa;
