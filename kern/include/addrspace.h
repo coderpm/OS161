@@ -51,8 +51,8 @@ struct page_table_entry
 {
 	paddr_t pa;			//Stores the physical address to which page is mapped
 	vaddr_t va;			//Stores the virtual address to which page is mapped
-	int permissions;	//Stores the permissions for the page table entry
-	int present:1;		//Variable for checking whether the page is in physical memory or disk
+	unsigned int permissions;	//Stores the permissions for the page table entry
+	unsigned int present:2;		//Variable for checking whether the page is in physical memory or disk
 
 	struct page_table_entry *next;
 };
@@ -62,6 +62,8 @@ struct addr_regions
 {
 
 	vaddr_t va_start;			//Virtual address of the start of region
+	vaddr_t va_end;				//Virtual address of the end of region
+
 	int region_numpages;		//Number of pages assigned for the region
 
 	//Permissions -- Set to 1 if permission given and 0 if permission not given
@@ -70,14 +72,6 @@ struct addr_regions
 	struct addr_regions *next_region;		//Link to the next region as we don't know the number of regions
 
 };
-
-/**
- * Declare functions to do the following:
- * 1. add a page table entry
- * 2. delete a page table entry
- * 3. insert a page table entry
- */
-
 
 
 //End of additions of structures and variables and functions by PM
@@ -106,12 +100,11 @@ struct addrspace {
         struct page_table_entry *page_table;
         vaddr_t heap_start;
         vaddr_t heap_end;
-        vaddr_t stackbase_start;
-        vaddr_t stackbase_end;
+        vaddr_t stackbase_top;		//Should store USERSTACK LOCATION
+        vaddr_t stackbase_base;
 
         struct addr_regions *regions;		//Link list of all the regions
         struct lock *lock_page_table;		//Lock for accessing the page table
-
 
         #endif
 };
@@ -175,5 +168,7 @@ void			  as_zero_region(paddr_t paddr, unsigned npages);
 
 int load_elf(struct vnode *v, vaddr_t *entrypoint);
 
+void
+change_page_entry(struct page_table_entry *,paddr_t);
 
 #endif /* _ADDRSPACE_H_ */

@@ -56,8 +56,8 @@ as_create(void)
 		return NULL;
 	}
 
-	as->stackbase_start=0;
-	as->stackbase_end=0;
+	as->stackbase_top=0;
+	as->stackbase_base=0;
 
 	as->heap_end=0;
 	as->heap_start=0;
@@ -124,6 +124,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 
 		as->regions->va_start = vaddr;
 		as->regions->region_numpages= npages;
+		as->regions->va_end = (as->regions->va_start + (npages * PAGE_SIZE));
 
 
 		//Set the permissions in other variable
@@ -146,6 +147,7 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 
 		end->va_start = vaddr;
 		end->region_numpages= npages;
+		end->va_end = (end->va_start + (npages * PAGE_SIZE));
 
 		end->next_region = NULL;
 
@@ -161,8 +163,8 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 	as->heap_end = (vaddr+sz) & PAGE_FRAME;
 
 	//Declare the Stack start and stack end
-	as->stackbase_start = USERSTACK;
-	as->stackbase_end = USERSTACK - VM_STACKPAGES * PAGE_SIZE;
+//	as->stackbase_top = (USERSTACK);
+//	as->stackbase_base =  USERSTACK - (VM_STACKPAGES * PAGE_SIZE);
 
 	return 0;
 }
@@ -177,6 +179,14 @@ as_zero_region(paddr_t paddr, unsigned npages)
 int
 as_prepare_load(struct addrspace *as)
 {
+	kprintf("Stack TOP is %d",as->stackbase_top);
+	kprintf("\nStack Base is %d",as->stackbase_base);
+
+	kprintf("\nHeap Start is %d",as->heap_start);
+	kprintf("\nHeap End is %d",as->heap_end);
+
+
+
 	struct addr_regions *head;
 	 head = as->regions;
 	if(as->regions!=NULL)
@@ -185,6 +195,9 @@ as_prepare_load(struct addrspace *as)
 
 		while(as->regions !=NULL)
 		{
+			kprintf("\nRegion Start is %d",as->regions->va_start);
+			kprintf("\nRegion End is %d",as->regions->va_end);
+
 			as->regions=as->regions->next_region;
 		}
 
@@ -239,7 +252,7 @@ as_complete_load(struct addrspace *as)
 int
 as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 {
-	KASSERT(as->stackbase_start!= 0);
+	KASSERT(as->stackbase_top!= 0);
 
 	*stackptr = USERSTACK;
 	return 0;

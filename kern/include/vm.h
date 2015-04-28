@@ -40,6 +40,7 @@
 #include <machine/vm.h>
 #include <types.h>
 #include <synch.h>
+#include <addrspace.h>
 
 /* Fault-type arguments to vm_fault() */
 #define VM_FAULT_READ        0    /* A read was attempted */
@@ -95,6 +96,7 @@ struct coremap_entry{
 
 	struct addrspace *as; 	//Stores the address space pointer of the process which is mapped to the coremap entry
 	int chunk_allocated;	//Stores the number of chunk allocated so that it is easy to free
+	int32_t time;
 };
 
 extern struct coremap_entry *coremap;
@@ -102,6 +104,7 @@ extern bool coremap_initialized;
 
 //Variable to store the total number of pages in the coremap entry
 extern int32_t total_systempages;
+extern int32_t coremap_pages;
 
 //Global variable for coremap_lock
 extern struct lock *coremap_lock;
@@ -110,12 +113,32 @@ extern struct lock *coremap_lock;
 int
 find_npages(int npages);
 
-//Function to allocate user level pages
-vaddr_t alloc_upages(int npages);
 
 //Function to remove user level pages
 void
-free_upages(vaddr_t addr);
+free_upages(void);
+
+//Function to allocate user level pages
+int
+alloc_upages(void);
+
+int
+find_page_available(int npages);
+
+
+int
+find_oldest_page(void);
+
+int
+find_npages(int npages);
+
+void
+evict_coremap_entry(int index);
+
+paddr_t
+handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as);
+
+
 
 
 #endif /* _VM_H_ */
