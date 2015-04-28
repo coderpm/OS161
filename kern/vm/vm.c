@@ -91,8 +91,9 @@ vm_bootstrap(void)
 	paddr_t freepaddr = firstpaddr + total_page_num * sizeof(struct coremap_entry);
 
 	//Store the number of coremap Pages
-//	int noOfcoremapPages= (freepaddr-firstpaddr)/PAGE_SIZE;
-	int num_coremapPages= (freepaddr-firstpaddr)/PAGE_SIZE;
+
+	int num_coremapPages= ((freepaddr-firstpaddr)/PAGE_SIZE)+1;
+
 	kprintf("\ntotal pages %d \n",total_systempages);
 	kprintf("total coremap pages %d \n",num_coremapPages);
 
