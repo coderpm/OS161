@@ -400,7 +400,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	while(!(address_found))
 	{
 			//First check within the stack bases
-			if(faultaddress >= stackbase && faultaddress <= stacktop)
+			if(faultaddress >= stackbase && faultaddress < stacktop)
 			{
 
 				//Means faultaddress lies in stackpage
@@ -413,7 +413,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 				else
 					return EFAULT;
 			}
-			else if(faultaddress >= as->heap_start && faultaddress <= as->heap_end)
+			else if(faultaddress >= as->heap_start && faultaddress < as->heap_end)
 			{
 				//meaning lies in the heap region
 				paddr = handle_address(faultaddress,permissions,as);
@@ -431,7 +431,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 				//Now Iterate over the regions and check whether it exists in one of the region
 				while(as->regions !=NULL)
 				{
-					if(faultaddress >= as->regions->va_start && faultaddress <= as->regions->va_end)
+					if(faultaddress >= as->regions->va_start && faultaddress < as->regions->va_end)
 					{
 						paddr = handle_address(faultaddress,as->regions->set_permissions,as);
 						if(paddr>0)
