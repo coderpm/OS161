@@ -569,7 +569,7 @@ thread_fork(const char *name,
 	newthread->t_stack = kmalloc(STACK_SIZE);
 	if (newthread->t_stack == NULL) {
 		thread_destroy(newthread);
-	//	kfree(process_array[newthread->t_pid]);
+		kfree(process_array[newthread->t_pid]);
 		return ENOMEM;
 	}
 	thread_checkstack_init(newthread);
@@ -592,7 +592,7 @@ thread_fork(const char *name,
 		result = as_copy(curthread->t_addrspace,&childspace);
 		if(result)
 		{
-			//kfree(process_array[newthread->t_pid]);
+			kfree(process_array[newthread->t_pid]);
 			return result;
 
 		}
@@ -602,7 +602,7 @@ thread_fork(const char *name,
 
 		if(newthread->t_addrspace==NULL)
 		{
-			//kfree(process_array[newthread->t_pid]);
+			kfree(process_array[newthread->t_pid]);
 			return ENOMEM;
 		}
 	}

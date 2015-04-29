@@ -73,6 +73,36 @@ as_create(void)
 void
 as_destroy(struct addrspace *as)
 {
+
+	if(as!= NULL){
+		struct addr_regions *next= as->regions;
+		while(as->regions != NULL){
+			next= as->regions->next_region;
+			as->regions->region_numpages=0;
+			as->regions->set_permissions=0;
+			as->regions->va_end=0;
+			as->regions->va_start=0;
+			kfree(as->regions);
+			as->regions= next;
+		}
+		struct page_table_entry *next_page= as->page_table;
+		while(as->page_table!= NULL){
+			lock_acquire(as->lock_page_table);
+			next_page = as->page_table->next;
+			page_free(as->page_table->pa);
+			as->page_table->permissions=0;
+			as->page_table->present=0;
+			as->page_table->va=0;
+			lock_release(as->lock_page_table);
+			kfree(as->page_table);
+			as->page_table= next_page;
+		}
+		as->heap_end=0;
+		as->heap_start=0;
+		as->stackbase_base=0;
+		as->stackbase_top=0;
+		kfree(as->lock_page_table);
+	}
 	kfree(as);
 }
 
@@ -140,11 +170,6 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		struct addr_regions *end;
 		end = (struct addr_regions *) kmalloc(sizeof(struct addr_regions));
 
-		while((as->regions->next_region) != NULL)
-		{
-			end = as->regions->next_region;
-		}
-
 		end->va_start = vaddr;
 		end->region_numpages= npages;
 		end->va_end = (end->va_start + (npages * PAGE_SIZE));
@@ -155,7 +180,20 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		int sum = readable+writeable+executable;
 		end->set_permissions=sum;
 
-		as->regions->next_region = end;
+		struct addr_regions *head;
+
+		head = as->regions;
+
+		while(as->regions != NULL)
+		{
+			as->regions=as->regions->next_region;
+		}
+		as->regions=end;
+
+		head->next_region=as->regions;
+		as->regions=head;
+
+
 	}
 
 	//Now declare the heap start and heap end
@@ -179,13 +217,13 @@ as_zero_region(paddr_t paddr, unsigned npages)
 int
 as_prepare_load(struct addrspace *as)
 {
-	kprintf("Stack TOP is %d",as->stackbase_top);
+	/*kprintf("Stack TOP is %d",as->stackbase_top);
 	kprintf("\nStack Base is %d",as->stackbase_base);
 
 	kprintf("\nHeap Start is %d",as->heap_start);
 	kprintf("\nHeap End is %d",as->heap_end);
 
-
+*/
 
 	struct addr_regions *head;
 	 head = as->regions;
@@ -195,8 +233,10 @@ as_prepare_load(struct addrspace *as)
 
 		while(as->regions !=NULL)
 		{
+/*
 			kprintf("\nRegion Start is %d",as->regions->va_start);
 			kprintf("\nRegion End is %d",as->regions->va_end);
+*/
 
 			as->regions=as->regions->next_region;
 		}
@@ -263,13 +303,11 @@ int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
 	struct addrspace *new;
-
 		//Creating new address space calling as create, which will initialize lock also;
 		new = as_create();
 		if (new==NULL) {
 			return ENOMEM;
 		}
-
 		//Coping addr_regions to new address space addr_regions structure
 		struct addr_regions *newregionshead;
 		struct addr_regions *oldregionshead;
@@ -364,4 +402,6 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 
 		*ret = new;
 		return 0;
+
 }
+

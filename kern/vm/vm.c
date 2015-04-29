@@ -68,7 +68,7 @@ int32_t total_systempages;
 int32_t coremap_pages;
 struct coremap_entry *coremap;
 bool coremap_initialized;
-struct lock *coremap_lock;
+struct spinlock coremap_lock= SPINLOCK_INITIALIZER;
 
 //ENd of Additions by PM
 void
@@ -77,8 +77,7 @@ vm_bootstrap(void)
 	paddr_t firstpaddr, lastpaddr;
 
 	//Create the global coremap lock
-	coremap_lock = lock_create("coremap_lock");
-
+	//spinlock_init(coremap_lock);
 	//Get the first and last physical address of RAM
 	ram_getsize(&firstpaddr, &lastpaddr);
 
@@ -170,7 +169,7 @@ alloc_kpages(int npages)
 	{
 		//Means that coremap has been initialized and now allocate pages from the coremap
 
-		lock_acquire(coremap_lock);
+		spinlock_acquire(&coremap_lock);
 
 		if(npages==1)
 		{
@@ -266,22 +265,73 @@ alloc_kpages(int npages)
 		} //End of if checking whether npages more than 1
 
 		//Release the coremap lock
-		lock_release(coremap_lock);
+		spinlock_release(&coremap_lock);
 
 		//Return the physical address retrieved from the coremap
 		return va;
 	}
 }
 
+void
+page_free(paddr_t paddr){
+	spinlock_acquire(&coremap_lock);
+	int coremap_entry= ((paddr- coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+	as_zero_region(coremap[coremap_entry].ce_paddr,coremap[coremap_entry].chunk_allocated);
+	if(coremap[coremap_entry].chunk_allocated==0){
+		coremap[coremap_entry].page_status=0;
+		coremap[coremap_entry].time=0;
+		coremap[coremap_entry].as=NULL;
+		coremap[coremap_entry].chunk_allocated=0;
+	}
+	else{
+		for(int j=0; j< coremap[coremap_entry].chunk_allocated; j++){
+			coremap[j].page_status=0;
+			coremap[j].time=0;
+			coremap[j].as=NULL;
+			coremap[j].chunk_allocated=0;
+		}
+	}
 
+	spinlock_release(&coremap_lock);
+}
 
 
 void
 free_kpages(vaddr_t addr)
 {
+	/*for(int i =0; i<total_systempages; i++){
+		kprintf("Page status of pages %d %d\n",i,coremap[i].page_status);
+	}*/
+	spinlock_acquire(&coremap_lock);
+	paddr_t p= KVADDR_TO_PADDR(addr);
+	for(int i= coremap_pages; i<= total_systempages; i++){
+		if(p== coremap[i].ce_paddr){
+			if(curthread->t_addrspace== coremap[i].as){
+				int chunkzise= coremap[i].chunk_allocated;
+				if(chunkzise==0){
+					as_zero_region(coremap[i].ce_paddr, chunkzise);
+					coremap[i].page_status=0;
+					coremap[i].as=NULL;
+					coremap[i].chunk_allocated=0;
+					coremap[i].time=0;
+				}
+				else{
+					as_zero_region(coremap[i].ce_paddr, chunkzise);
+					for(int j=i; j<i+chunkzise; j++){
+						coremap[j].page_status=0;
+						coremap[j].as=NULL;
+						coremap[j].chunk_allocated=0;
+						coremap[j].time=0;
+					}
+				}
+				break;
+			}
+		}
+	}
+	spinlock_release(&coremap_lock);
 
 
-	(void)addr;
+	//(void)addr;
 }
 
 void
@@ -465,8 +515,19 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	}//End of while checking whether address found for the fault address
 
 
+	KASSERT((paddr & PAGE_FRAME) == paddr);
+
 //	 Disable interrupts on this CPU while frobbing the TLB.
 	spl = splhigh();
+
+	ehi = faultaddress;
+	elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
+
+	tlb_random(ehi,elo);
+
+	splx(spl);
+	return 0;
+
 
 	for (i=0; i<NUM_TLB; i++)
 	{
@@ -484,12 +545,11 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		return 0;
 	}
 
+
 	kprintf("dumbvm: Ran out of TLB entries - cannot handle page fault\n");
 		splx(spl);
 		return EFAULT;
 
-	faulttype=0;
-		(void) faultaddress;
 	return ENOMEM;
 }
 
@@ -540,6 +600,9 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as)
 					//present bit is true
 					pa = as->page_table->pa;
 
+					//Re-assign back the head
+					as->page_table = head;
+
 					lock_release(as->lock_page_table);
 					return pa;
 				}
@@ -547,7 +610,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as)
 				{
 					//present bit is false
 
-					lock_acquire(coremap_lock);
+					spinlock_acquire(&coremap_lock);
 
 					int index = alloc_upages();
 
@@ -577,7 +640,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as)
 					as->page_table = head;
 
 					lock_release(as->lock_page_table);
-					lock_release(coremap_lock);
+					spinlock_release(&coremap_lock);
 					return pa;
 					break;
 				}
@@ -596,7 +659,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as)
 			struct page_table_entry *entry = (struct page_table_entry *) kmalloc(sizeof(struct page_table_entry));
 
 			//Take the coremap lock and find an index to map the entry
-			lock_acquire(coremap_lock);
+			spinlock_acquire(&coremap_lock);
 
 			int index = alloc_upages();
 
@@ -627,7 +690,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as)
 			as->page_table= entry;
 
 			//Release the coremap lock
-			lock_release(coremap_lock);
+			spinlock_release(&coremap_lock);
 			//Release the page table lock
 			lock_release(as->lock_page_table);
 
@@ -653,7 +716,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as)
 		as->page_table = (struct page_table_entry *) kmalloc(sizeof(struct page_table_entry));
 
 		//Take the coremap lock and find an index to map the entry
-		lock_acquire(coremap_lock);
+		spinlock_acquire(&coremap_lock);
 
 		int index = alloc_upages();
 
@@ -681,7 +744,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as)
 		pa = coremap[index].ce_paddr;
 
 		//Release the coremap lock
-		lock_release(coremap_lock);
+		spinlock_release(&coremap_lock);
 		//Release the page table lock
 		lock_release(as->lock_page_table);
 
