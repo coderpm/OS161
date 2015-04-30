@@ -126,7 +126,7 @@ boot(void)
 	vm_bootstrap();
 
 	kprintf_bootstrap();
-	kprintf("Came here\n");
+	/*kprintf("Came here\n");*/
 	thread_start_cpus();
 
 	/* Default bootfs - but ignore failure, in case emu0 doesn't exist */

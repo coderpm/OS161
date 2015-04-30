@@ -69,6 +69,11 @@ int32_t coremap_pages;
 struct coremap_entry *coremap;
 bool coremap_initialized;
 struct spinlock coremap_lock= SPINLOCK_INITIALIZER;
+struct spinlock tlb_lock1;
+struct spinlock tlb_lock2;
+struct spinlock tlb_lock3;
+struct spinlock tlb_lock4;
+
 
 //ENd of Additions by PM
 void
@@ -77,7 +82,10 @@ vm_bootstrap(void)
 	paddr_t firstpaddr, lastpaddr;
 
 	//Create the global coremap lock
-	//spinlock_init(coremap_lock);
+	spinlock_init(&tlb_lock1);
+	spinlock_init(&tlb_lock2);
+	spinlock_init(&tlb_lock3);
+	spinlock_init(&tlb_lock4);
 	//Get the first and last physical address of RAM
 	ram_getsize(&firstpaddr, &lastpaddr);
 
@@ -92,8 +100,8 @@ vm_bootstrap(void)
 	//Store the number of coremap Pages
 //	int noOfcoremapPages= (freepaddr-firstpaddr)/PAGE_SIZE;
 	int num_coremapPages= (freepaddr-firstpaddr)/PAGE_SIZE+1;
-	kprintf("\ntotal pages %d \n",total_systempages);
-	kprintf("total coremap pages %d \n",num_coremapPages);
+	/*kprintf("\ntotal pages %d \n",total_systempages);
+	kprintf("total coremap pages %d \n",num_coremapPages);*/
 
 	coremap_pages=num_coremapPages;
 	/*
@@ -519,12 +527,28 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 //	 Disable interrupts on this CPU while frobbing the TLB.
 	spl = splhigh();
-
+	/*if(curthread->t_cpu->c_number){
+		spinlock_acquire(&tlb_lock1);
+	}else if(curthread->t_cpu->c_number==2){
+		spinlock_acquire(&tlb_lock2);
+	}else if(curthread->t_cpu->c_number==3){
+		spinlock_acquire(&tlb_lock3);
+	}else if(curthread->t_cpu->c_number==4){
+		spinlock_acquire(&tlb_lock4);
+	}*/
 	ehi = faultaddress;
 	elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
 
 	tlb_random(ehi,elo);
-
+	/*if(curthread->t_cpu->c_number==1){
+			spinlock_release(&tlb_lock1);
+	}else if(curthread->t_cpu->c_number==2){
+			spinlock_release(&tlb_lock2);
+	}else if(curthread->t_cpu->c_number==3){
+			spinlock_release(&tlb_lock3);
+	}else if(curthread->t_cpu->c_number==4){
+			spinlock_release(&tlb_lock4);
+	}*/
 	splx(spl);
 	return 0;
 
@@ -792,6 +816,7 @@ alloc_upages()
 
 	if(!(page_found))
 		{
+		panic("no free page found\n");
 			index = find_oldest_page();
 
 			/* Now EVICT the page at the index returned from the find_oldest_page by calling FUNCTION: evict_coremap_entry */
@@ -868,6 +893,7 @@ find_page_available(int npages)
 			{
 				//Meaning no page found till now
 				//Call function to find the earliest non-kernel page and return its index
+				panic("No free Kpage found\n");
 				return_index = find_oldest_page();
 				found_status=true;
 
@@ -972,7 +998,10 @@ find_npages(int npages)
 		}// End of for loop over all the pages
 	}//end of main while
 
-	startindex=-1;
+	if(!found_range){
+		panic("Couldnt find the pages\n");
+	}
+	/*startindex=-1;
 	found_range= false;
 	count=0;
 
@@ -1008,7 +1037,7 @@ find_npages(int npages)
 				}
 			}// End of if checking whether page is free
 		}// End of for loop over all the pages
-	}//end of main while
+	}//end of main while*/
 
 
 	return startindex;

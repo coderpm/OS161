@@ -595,3 +595,28 @@ sys___execv(char * p_name,char **ar )
 }
 //End of Additions by PM
 
+//Addition by Mohit
+int
+sys___sbrk(int amount, int *retval){
+	struct addrspace *as = curthread->t_addrspace;
+	if((as->heap_end+amount)< as->heap_start){
+		return EINVAL;
+	}
+	if(!(amount%4==0)){
+		amount = amount + (amount%4);
+	}
+	vaddr_t heap_end= as->heap_end;
+	amount += heap_end & ~(vaddr_t)PAGE_FRAME;
+	amount = (amount + PAGE_SIZE - 1) & PAGE_FRAME;
+
+	if((heap_end+amount)>= as->stackbase_base){
+		return ENOMEM;
+	}
+
+	as->heap_end= as->heap_end+amount;
+	*retval= (int)heap_end;
+
+return 0;
+}
+
+

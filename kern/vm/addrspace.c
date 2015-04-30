@@ -41,6 +41,7 @@
 #include <current.h>
 #include <mips/tlb.h>
 #include <addrspace.h>
+#include<clock.h>
 
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -115,11 +116,27 @@ as_activate(struct addrspace *as)
 
 	/* Disable interrupts on this CPU while frobbing the TLB. */
 	spl = splhigh();
-
+	/*if(curthread->t_cpu->c_number){
+			spinlock_acquire(&tlb_lock1);
+		}else if(curthread->t_cpu->c_number==2){
+			spinlock_acquire(&tlb_lock2);
+		}else if(curthread->t_cpu->c_number==3){
+			spinlock_acquire(&tlb_lock3);
+		}else if(curthread->t_cpu->c_number==4){
+			spinlock_acquire(&tlb_lock4);
+		}*/
 	for (i=0; i<NUM_TLB; i++) {
 		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
 	}
-
+	/*if(curthread->t_cpu->c_number==1){
+				spinlock_release(&tlb_lock1);
+		}else if(curthread->t_cpu->c_number==2){
+				spinlock_release(&tlb_lock2);
+		}else if(curthread->t_cpu->c_number==3){
+				spinlock_release(&tlb_lock3);
+		}else if(curthread->t_cpu->c_number==4){
+				spinlock_release(&tlb_lock4);
+		}*/
 	splx(spl);
 }
 
@@ -158,8 +175,8 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 
 
 		//Set the permissions in other variable
-		int sum=readable+writeable+executable;
-		as->regions->set_permissions=sum;
+		//int sum=
+		as->regions->set_permissions=readable+writeable+executable;
 
 		as->regions->next_region = NULL;
 	}
@@ -197,8 +214,8 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 	}
 
 	//Now declare the heap start and heap end
-	as->heap_start = (vaddr+sz) & PAGE_FRAME;
-	as->heap_end = (vaddr+sz) & PAGE_FRAME;
+	as->heap_start = (vaddr & PAGE_FRAME)+ npages*PAGE_SIZE;
+	as->heap_end = (vaddr & PAGE_FRAME)+ npages*PAGE_SIZE;
 
 	//Declare the Stack start and stack end
 	as->stackbase_top = (USERSTACK);
@@ -360,7 +377,10 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 			if(count_pt==0){
 				new->page_table=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
 				new_ptentry_head= new->page_table;
-				new->page_table->pa= old->page_table->pa;
+				new->page_table->pa= alloc_newPage(new);
+				memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
+							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
+							PAGE_SIZE);
 				new->page_table->permissions= old->page_table->permissions;
 				new->page_table->present= old->page_table->present;
 				new->page_table->va= old->page_table->va;
@@ -374,7 +394,10 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 				}
 			}
 			else{
-				new->page_table->pa= old->page_table->pa;
+				new->page_table->pa= alloc_newPage(new);
+				memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
+							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
+							PAGE_SIZE);
 				new->page_table->permissions= old->page_table->permissions;
 				new->page_table->present= old->page_table->present;
 				new->page_table->va= old->page_table->va;
@@ -402,6 +425,31 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 
 		*ret = new;
 		return 0;
+
+}
+
+paddr_t alloc_newPage(struct addrspace *new){
+	paddr_t newaddr=0;
+	spinlock_acquire(&coremap_lock);
+	int index= alloc_upages();
+	//Zero the region
+	as_zero_region(coremap[index].ce_paddr,1);
+
+	newaddr= coremap[index].ce_paddr;
+	//Getting time
+	time_t seconds;
+	uint32_t nanoseconds;
+	gettime(&seconds, &nanoseconds);
+
+	//Update the coremap entries
+	coremap[index].as=new;
+	coremap[index].chunk_allocated=0;
+	coremap[index].page_status=2;
+	coremap[index].time=seconds+nanoseconds;
+
+	spinlock_release(&coremap_lock);
+
+	return newaddr;
 
 }
 

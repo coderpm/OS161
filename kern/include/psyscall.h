@@ -78,4 +78,7 @@ enter_process(void *tf,unsigned long addr);
 int
 sys___execv(char *p_name ,char ** arguments);
 
+int
+sys___sbrk(int, int *retval);
+
 #endif /* _PSYSCALL_H_ */

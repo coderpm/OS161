@@ -158,6 +158,9 @@ int               as_complete_load(struct addrspace *as);
 int               as_define_stack(struct addrspace *as, vaddr_t *initstackptr);
 void			  as_zero_region(paddr_t paddr, unsigned npages);
 
+//Added by Mohit
+paddr_t alloc_newPage(struct addrspace *new);
+
 
 /*
  * Functions in loadelf.c

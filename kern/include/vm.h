@@ -110,6 +110,10 @@ extern int32_t coremap_pages;
 
 //Global variable for coremap_lock
 extern struct spinlock coremap_lock;
+extern struct spinlock tlb_lock1;
+extern struct spinlock tlb_lock2;
+extern struct spinlock tlb_lock3;
+extern struct spinlock tlb_lock4;
 
 //Function to find continuous npages from coremap array entry
 int
