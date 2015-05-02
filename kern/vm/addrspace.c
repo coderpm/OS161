@@ -41,6 +41,7 @@
 #include <current.h>
 #include <mips/tlb.h>
 #include <addrspace.h>
+#include<clock.h>
 
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -73,6 +74,36 @@ as_create(void)
 void
 as_destroy(struct addrspace *as)
 {
+
+	if(as!= NULL){
+		struct addr_regions *next= as->regions;
+		while(as->regions != NULL){
+			next= as->regions->next_region;
+			as->regions->region_numpages=0;
+			as->regions->set_permissions=0;
+			as->regions->va_end=0;
+			as->regions->va_start=0;
+			kfree(as->regions);
+			as->regions= next;
+		}
+		struct page_table_entry *next_page= as->page_table;
+		while(as->page_table!= NULL){
+			lock_acquire(as->lock_page_table);
+			next_page = as->page_table->next;
+			page_free(as->page_table->pa);
+			as->page_table->permissions=0;
+			as->page_table->present=0;
+			as->page_table->va=0;
+			lock_release(as->lock_page_table);
+			kfree(as->page_table);
+			as->page_table= next_page;
+		}
+		as->heap_end=0;
+		as->heap_start=0;
+		as->stackbase_base=0;
+		as->stackbase_top=0;
+		kfree(as->lock_page_table);
+	}
 	kfree(as);
 }
 
@@ -85,11 +116,27 @@ as_activate(struct addrspace *as)
 
 	/* Disable interrupts on this CPU while frobbing the TLB. */
 	spl = splhigh();
-
+	/*if(curthread->t_cpu->c_number){
+			spinlock_acquire(&tlb_lock1);
+		}else if(curthread->t_cpu->c_number==2){
+			spinlock_acquire(&tlb_lock2);
+		}else if(curthread->t_cpu->c_number==3){
+			spinlock_acquire(&tlb_lock3);
+		}else if(curthread->t_cpu->c_number==4){
+			spinlock_acquire(&tlb_lock4);
+		}*/
 	for (i=0; i<NUM_TLB; i++) {
 		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
 	}
-
+	/*if(curthread->t_cpu->c_number==1){
+				spinlock_release(&tlb_lock1);
+		}else if(curthread->t_cpu->c_number==2){
+				spinlock_release(&tlb_lock2);
+		}else if(curthread->t_cpu->c_number==3){
+				spinlock_release(&tlb_lock3);
+		}else if(curthread->t_cpu->c_number==4){
+				spinlock_release(&tlb_lock4);
+		}*/
 	splx(spl);
 }
 
@@ -128,8 +175,8 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 
 
 		//Set the permissions in other variable
-		int sum=readable+writeable+executable;
-		as->regions->set_permissions=sum;
+		//int sum=
+		as->regions->set_permissions=readable+writeable+executable;
 
 		as->regions->next_region = NULL;
 	}
@@ -167,8 +214,8 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 	}
 
 	//Now declare the heap start and heap end
-	as->heap_start = (vaddr+sz) & PAGE_FRAME;
-	as->heap_end = (vaddr+sz) & PAGE_FRAME;
+	as->heap_start = (vaddr & PAGE_FRAME)+ npages*PAGE_SIZE;
+	as->heap_end = (vaddr & PAGE_FRAME)+ npages*PAGE_SIZE;
 
 	//Declare the Stack start and stack end
 	as->stackbase_top = (USERSTACK);
@@ -272,107 +319,137 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
-    struct addrspace *new;
+	struct addrspace *new;
+		//Creating new address space calling as create, which will initialize lock also;
+		new = as_create();
+		if (new==NULL) {
+			return ENOMEM;
+		}
+		//Coping addr_regions to new address space addr_regions structure
+		struct addr_regions *newregionshead;
+		struct addr_regions *oldregionshead;
+			 oldregionshead = old->regions;
+		int count=0;
+		while(old->regions !=NULL)
+		{
+			if(count==0){
+				new->regions=(struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
+				newregionshead= new->regions;
+				new->regions->va_start= old->regions->va_start;
+				new->regions->region_numpages= old->regions->region_numpages;
+				new->regions->set_permissions= old->regions->set_permissions;
+				new->regions->va_end= old->regions->va_end;
+				old->regions= old->regions->next_region;
+				if(old->regions!= NULL){
+					new->regions->next_region= (struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
+					new->regions= new->regions->next_region;
+				}
+				else{
+					new->regions->next_region= NULL;
+				}
+			}
+			else{
+				new->regions->va_start= old->regions->va_start;
+				new->regions->region_numpages= old->regions->region_numpages;
+				new->regions->set_permissions= old->regions->set_permissions;
+				new->regions->va_end= old->regions->va_end;
+				old->regions= old->regions->next_region;
+				if(old->regions!= NULL){
+					new->regions->next_region= (struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
+					new->regions= new->regions->next_region;
+				}
+				else{
+					new->regions->next_region= NULL;
+				}
+			}
+		count++;
+		}
+		//Setting the pointer to the start of the list
+		old->regions= oldregionshead;
+		new->regions= newregionshead;
 
-        //Creating new address space calling as create, which will initialize lock also;
-        new = as_create();
-        if (new==NULL) {
-            return ENOMEM;
-        }
+		//Coping page table to new address space page table structure
+		struct page_table_entry *new_ptentry_head;
+		struct page_table_entry *old_ptentry_head;
+		old_ptentry_head = old->page_table;
+		int count_pt= 0;
+		while(old->page_table != NULL){
+			if(count_pt==0){
+				new->page_table=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
+				new_ptentry_head= new->page_table;
+				new->page_table->pa= alloc_newPage(new);
+				memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
+							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
+							PAGE_SIZE);
+				new->page_table->permissions= old->page_table->permissions;
+				new->page_table->present= old->page_table->present;
+				new->page_table->va= old->page_table->va;
+				old->page_table= old->page_table->next;
+				if(old->page_table!= NULL){
+					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
+					new->page_table= new->page_table->next;
+				}
+				else{
+					new->page_table->next= NULL;
+				}
+			}
+			else{
+				new->page_table->pa= alloc_newPage(new);
+				memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
+							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
+							PAGE_SIZE);
+				new->page_table->permissions= old->page_table->permissions;
+				new->page_table->present= old->page_table->present;
+				new->page_table->va= old->page_table->va;
+				old->page_table= old->page_table->next;
+				if(old->page_table!= NULL){
+					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
+					new->page_table= new->page_table->next;
+				}
+				else{
+					new->page_table->next= NULL;
+				}
+			}
+			count_pt++;
+		}
+		//Setting the head to the start of the list
+		old->page_table= old_ptentry_head;
+		new->page_table= new_ptentry_head;
 
-        //Coping addr_regions to new address space addr_regions structure
-        struct addr_regions *newregionshead;
-        struct addr_regions *oldregionshead;
-             oldregionshead = old->regions;
-        int count=0;
-        while(old->regions !=NULL)
-        {
-            if(count==0){
-                new->regions=(struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
-                newregionshead= new->regions;
-                new->regions->va_start= old->regions->va_start;
-                new->regions->region_numpages= old->regions->region_numpages;
-                new->regions->set_permissions= old->regions->set_permissions;
-                new->regions->va_end= old->regions->va_end;
-                old->regions= old->regions->next_region;
-                if(old->regions!= NULL){
-                    new->regions->next_region= (struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
-                    new->regions= new->regions->next_region;
-                }
-                else{
-                    new->regions->next_region= NULL;
-                }
-            }
-            else{
-                new->regions->va_start= old->regions->va_start;
-                new->regions->region_numpages= old->regions->region_numpages;
-                new->regions->set_permissions= old->regions->set_permissions;
-                new->regions->va_end= old->regions->va_end;
-                old->regions= old->regions->next_region;
-                if(old->regions!= NULL){
-                    new->regions->next_region= (struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
-                    new->regions= new->regions->next_region;
-                }
-                else{
-                    new->regions->next_region= NULL;
-                }
-            }
-        count++;
-        }
-        //Setting the pointer to the start of the list
-        old->regions= oldregionshead;
-        new->regions= newregionshead;
-
-        //Coping page table to new address space page table structure
-        struct page_table_entry *new_ptentry_head;
-        struct page_table_entry *old_ptentry_head;
-        old_ptentry_head = old->page_table;
-        int count_pt= 0;
-        while(old->page_table != NULL){
-            if(count_pt==0){
-                new->page_table=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
-                new_ptentry_head= new->page_table;
-                new->page_table->pa= old->page_table->pa;
-                new->page_table->permissions= old->page_table->permissions;
-                new->page_table->present= old->page_table->present;
-                new->page_table->va= old->page_table->va;
-                old->page_table= old->page_table->next;
-                if(old->page_table!= NULL){
-                    new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
-                    new->page_table= new->page_table->next;
-                }
-                else{
-                    new->page_table->next= NULL;
-                }
-            }
-            else{
-                new->page_table->pa= old->page_table->pa;
-                new->page_table->permissions= old->page_table->permissions;
-                new->page_table->present= old->page_table->present;
-                new->page_table->va= old->page_table->va;
-                old->page_table= old->page_table->next;
-                if(old->page_table!= NULL){
-                    new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
-                    new->page_table= new->page_table->next;
-                }
-                else{
-                    new->page_table->next= NULL;
-                }
-            }
-            count_pt++;
-        }
-        //Setting the head to the start of the list
-        old->page_table= old_ptentry_head;
-        new->page_table= new_ptentry_head;
-
-        //Coping rest of the remaining entries in the old structure to new structure
-        new->heap_end= old->heap_end;
-        new->heap_start= old->heap_start;
-        new->stackbase_base= old->stackbase_base;
-        new->stackbase_top= old->stackbase_top;
+		//Coping rest of the remaining entries in the old structure to new structure
+		new->heap_end= old->heap_end;
+		new->heap_start= old->heap_start;
+		new->stackbase_base= old->stackbase_base;
+		new->stackbase_top= old->stackbase_top;
 
 
-        *ret = new;
-        return 0;
+		*ret = new;
+		return 0;
+
+}
+
+paddr_t alloc_newPage(struct addrspace *new){
+	paddr_t newaddr=0;
+	spinlock_acquire(&coremap_lock);
+	int index= alloc_upages();
+	//Zero the region
+	as_zero_region(coremap[index].ce_paddr,1);
+
+	newaddr= coremap[index].ce_paddr;
+	//Getting time
+	time_t seconds;
+	uint32_t nanoseconds;
+	gettime(&seconds, &nanoseconds);
+
+	//Update the coremap entries
+	coremap[index].as=new;
+	coremap[index].chunk_allocated=0;
+	coremap[index].page_status=2;
+	coremap[index].time=seconds+nanoseconds;
+
+	spinlock_release(&coremap_lock);
+
+	return newaddr;
+
 }
 

@@ -77,6 +77,8 @@ void
 vm_tlbshootdown(const struct tlbshootdown *ts);
 int
 vm_fault(int faulttype, vaddr_t faultaddress);
+void
+page_free(paddr_t paddr);
 
 /*
  * Added By Mohit & Pratham
@@ -107,7 +109,11 @@ extern int32_t total_systempages;
 extern int32_t coremap_pages;
 
 //Global variable for coremap_lock
-extern struct lock *coremap_lock;
+extern struct spinlock coremap_lock;
+extern struct spinlock tlb_lock1;
+extern struct spinlock tlb_lock2;
+extern struct spinlock tlb_lock3;
+extern struct spinlock tlb_lock4;
 
 //Function to find continuous npages from coremap array entry
 int

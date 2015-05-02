@@ -112,7 +112,7 @@ int nettest(int, char **);
  * adding arguments parameter for runprogram
  */
 
-int runprogram(char *progname, char **);
+int runprogram(char *progname);
 
 
 //End of additions by PM

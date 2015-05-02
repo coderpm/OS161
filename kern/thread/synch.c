@@ -202,7 +202,7 @@ lock_acquire(struct lock *lock)
 	        				"Inside lock_acquire");*/
 	struct thread *mythread;
 	KASSERT(lock != NULL);
-    KASSERT(curthread->t_in_interrupt == false);
+    //KASSERT(curthread->t_in_interrupt == false);
 
 	spinlock_acquire(&lock->lk_spinlock);
 
