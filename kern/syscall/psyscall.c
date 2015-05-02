@@ -606,8 +606,8 @@ sys___sbrk(int amount, int *retval){
 		amount = amount + (amount%4);
 	}
 	vaddr_t heap_end= as->heap_end;
-	amount += heap_end & ~(vaddr_t)PAGE_FRAME;
-	amount = (amount + PAGE_SIZE - 1) & PAGE_FRAME;
+	/*amount += heap_end & ~(vaddr_t)PAGE_FRAME;
+	amount = (amount + PAGE_SIZE - 1) & PAGE_FRAME;*/
 
 	if((heap_end+amount)>= as->stackbase_base){
 		return ENOMEM;

@@ -409,7 +409,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	//Check whether addrspace variables are aligned properly
 	KASSERT((as->heap_start & PAGE_FRAME) == as->heap_start);
-	KASSERT((as->heap_end & PAGE_FRAME) == as->heap_end);
+	//KASSERT((as->heap_end & PAGE_FRAME) == as->heap_end);
 
 //	KASSERT((as->stackbase_top & PAGE_FRAME) == as->stackbase_top);
 //	KASSERT((as->stackbase_base & PAGE_FRAME) == as->stackbase_end);

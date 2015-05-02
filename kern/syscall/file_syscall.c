@@ -344,7 +344,7 @@ return 0;
 int
 dup2(int oldfd, int newfd, int *return_value){
 
-	if(newfd<0 || newfd>=__OPEN_MAX || oldfd<0 || oldfd>=__OPEN_MAX){
+	if(newfd<=0 || newfd>=__OPEN_MAX || oldfd<0 || oldfd>=__OPEN_MAX){
 		return EBADF;
 	}
 	else{
@@ -372,6 +372,9 @@ dup2(int oldfd, int newfd, int *return_value){
 			curthread->file_table[newfd]= fd;
 			fd->reference_count++;
 			*return_value= newfd;
+		}
+		else{
+			*return_value= oldfd;
 		}
 	}
 return 0;
