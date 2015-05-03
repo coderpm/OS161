@@ -41,12 +41,15 @@
 #include <types.h>
 #include <synch.h>
 #include <addrspace.h>
+#include <limits.h>
 
 /* Fault-type arguments to vm_fault() */
 #define VM_FAULT_READ        0    /* A read was attempted */
 #define VM_FAULT_WRITE       1    /* A write was attempted */
 #define VM_FAULT_READONLY    2    /* A write to a readonly page was attempted*/
 
+//Declare the swap file variable to save the swap file name
+#define SWAP_FILE   "zion"
 
 /* Initialization function */
 void vm_bootstrap(void);
@@ -110,6 +113,18 @@ extern int32_t coremap_pages;
 
 //Global variable for coremap_lock
 extern struct spinlock coremap_lock;
+
+//Swap index structure and Global variable for accessing the swap_file array and lock
+struct swap_elements
+{
+	struct addrspace *addr;
+	vaddr_t va;
+};
+
+extern struct swap_elements *swap_info[SWAP_MAX];
+extern struct lock *swap_lock;
+
+//Global variable for tlb locks --TODO Change this to have just one lock
 extern struct spinlock tlb_lock1;
 extern struct spinlock tlb_lock2;
 extern struct spinlock tlb_lock3;

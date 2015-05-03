@@ -74,6 +74,12 @@
 /* Max value for a processes (Maximum number of user process that can run) */
 #define __PROCESS_MAX       512
 
+/**
+ * Declare max number for array of swap space
+ */
+#define __SWAP_MAX       2000
+
+
 /*
  * Not so important parts of the API.
  */

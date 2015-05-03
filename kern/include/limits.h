@@ -52,6 +52,6 @@
  * Author Pratham Malik
  */
 #define PROCESS_MAX         __PROCESS_MAX
-
+#define SWAP_MAX            __SWAP_MAX
 
 #endif /* _LIMITS_H_ */

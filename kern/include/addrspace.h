@@ -52,6 +52,12 @@ struct page_table_entry
 	paddr_t pa;			//Stores the physical address to which page is mapped
 	vaddr_t va;			//Stores the virtual address to which page is mapped
 	unsigned int permissions;	//Stores the permissions for the page table entry
+
+	/**
+	 * present == 1 -- Entry present in coremap
+	 * present == 0 -- Swapped out currently
+	 */
+
 	unsigned int present:2;		//Variable for checking whether the page is in physical memory or disk
 
 	struct page_table_entry *next;
@@ -69,6 +75,8 @@ struct addr_regions
 	//Permissions -- Set to 1 if permission given and 0 if permission not given
 
 	int set_permissions;		//Used for saving the old permissions - to be retrieved using bit manipulation
+	int new_permission;			//TODO: Used for setting the new permissions - check this and change this to set_permission in as_complete_load
+
 	struct addr_regions *next_region;		//Link to the next region as we don't know the number of regions
 
 };

@@ -190,7 +190,7 @@ sys___waitpid(int processid,userptr_t  status,int options, int32_t *retval)
 	if (processid == curthread->t_pid)
 		return ECHILD;
 
-	//TODO::Check whether the pid exists in your child list -- Complete after fork - Completed below
+
 	if(!(curthread->t_pid == process_array[processid]->parent_id))
 		return ECHILD;
 
@@ -274,7 +274,7 @@ sys___kwaitpid(int processid,int *status,int options, int32_t *retval)
 	if (processid == curthread->t_pid)
 		return ECHILD;
 
-	//TODO::Check whether the pid exists in your child list -- Complete after fork - Completed below
+
 	if(!(curthread->t_pid == process_array[processid]->parent_id))
 		return ECHILD;
 
@@ -606,8 +606,8 @@ sys___sbrk(int amount, int *retval){
 		amount = amount + (amount%4);
 	}
 	vaddr_t heap_end= as->heap_end;
-	amount += heap_end & ~(vaddr_t)PAGE_FRAME;
-	amount = (amount + PAGE_SIZE - 1) & PAGE_FRAME;
+	/*amount += heap_end & ~(vaddr_t)PAGE_FRAME;
+	amount = (amount + PAGE_SIZE - 1) & PAGE_FRAME;*/
 
 	if((heap_end+amount)>= as->stackbase_base){
 		return ENOMEM;

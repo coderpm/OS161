@@ -69,11 +69,14 @@ int32_t coremap_pages;
 struct coremap_entry *coremap;
 bool coremap_initialized;
 struct spinlock coremap_lock= SPINLOCK_INITIALIZER;
+
+struct swap_elements *swap_info[SWAP_MAX];
+struct lock *swap_lock;
+
 struct spinlock tlb_lock1;
 struct spinlock tlb_lock2;
 struct spinlock tlb_lock3;
 struct spinlock tlb_lock4;
-
 
 //ENd of Additions by PM
 void
@@ -409,7 +412,6 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	//Check whether addrspace variables are aligned properly
 	KASSERT((as->heap_start & PAGE_FRAME) == as->heap_start);
-//	KASSERT((as->heap_end & PAGE_FRAME) == as->heap_end);
 
 //	KASSERT((as->stackbase_top & PAGE_FRAME) == as->stackbase_top);
 //	KASSERT((as->stackbase_base & PAGE_FRAME) == as->stackbase_end);
@@ -593,7 +595,56 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as)
 	 * First check if the address space is not null and if page table entry exists
 	 */
 
-	if(as->page_table!=NULL)
+	if(as->page_table==NULL)
+	{
+			/**
+			 * Meaning that there are no entries for the page table as of now
+			 * In such case -- Allocate space for the page table entry(Take page table lock) and DO
+			 * 1. find index where it can be mapped by calling -- alloc_upages (take coremap lock)
+			 * 2. Map the pa to va in the page entry and update coremap index too
+			 * 3. release pagetable and coremap lock and assign the pa
+			 */
+
+			lock_acquire(as->lock_page_table);
+
+			as->page_table = (struct page_table_entry *) kmalloc(sizeof(struct page_table_entry));
+
+			//Take the coremap lock and find an index to map the entry
+			spinlock_acquire(&coremap_lock);
+
+			int index = alloc_upages();
+
+			//update the page table entries at that index
+			as->page_table->pa = coremap[index].ce_paddr;
+			as->page_table->permissions =permissions;
+			as->page_table->present=1;
+			as->page_table->va=faultaddr;
+			as->page_table->next=NULL;
+
+			//Zero the region
+			as_zero_region(coremap[index].ce_paddr,1);
+
+			//Getting time
+			time_t seconds;
+			uint32_t nanoseconds;
+			gettime(&seconds, &nanoseconds);
+
+			//Update the coremap entries
+			coremap[index].as=as;
+			coremap[index].chunk_allocated=0;
+			coremap[index].page_status=2;
+			coremap[index].time=seconds+nanoseconds;
+
+			pa = coremap[index].ce_paddr;
+
+			//Release the coremap lock
+			spinlock_release(&coremap_lock);
+			//Release the page table lock
+			lock_release(as->lock_page_table);
+
+			return pa;
+	}
+	else if(as->page_table!=NULL)
 	{
 		/**
 		 * Meaning entries exist in the page table of addrspace
@@ -725,55 +776,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as)
 
 
 	}//End of IF checking whether the page table entries is not NULL
-	else if(as->page_table==NULL)
-	{
-		/**
-		 * Meaning that there are no entries for the page table as of now
-		 * In such case -- Allocate space for the page table entry(Take page table lock) and DO
-		 * 1. find index where it can be mapped by calling -- alloc_upages (take coremap lock)
-		 * 2. Map the pa to va in the page entry and update coremap index too
-		 * 3. release pagetable and coremap lock and assign the pa
-		 */
 
-		lock_acquire(as->lock_page_table);
-
-		as->page_table = (struct page_table_entry *) kmalloc(sizeof(struct page_table_entry));
-
-		//Take the coremap lock and find an index to map the entry
-		spinlock_acquire(&coremap_lock);
-
-		int index = alloc_upages();
-
-		//update the page table entries at that index
-		as->page_table->pa = coremap[index].ce_paddr;
-		as->page_table->permissions =permissions;
-		as->page_table->present=1;
-		as->page_table->va=faultaddr;
-		as->page_table->next=NULL;
-
-		//Zero the region
-		as_zero_region(coremap[index].ce_paddr,1);
-
-		//Getting time
-		time_t seconds;
-		uint32_t nanoseconds;
-		gettime(&seconds, &nanoseconds);
-
-		//Update the coremap entries
-		coremap[index].as=as;
-		coremap[index].chunk_allocated=0;
-		coremap[index].page_status=2;
-		coremap[index].time=seconds+nanoseconds;
-
-		pa = coremap[index].ce_paddr;
-
-		//Release the coremap lock
-		spinlock_release(&coremap_lock);
-		//Release the page table lock
-		lock_release(as->lock_page_table);
-
-		return pa;
-	}
 
 
 	return pa;
@@ -811,17 +814,14 @@ alloc_upages()
 		/**
 		 * Means no page found which is free --
 		 * then evict any user page (change this during swapping)
-		 * FIND To be EVICTED PAGE - Call find_oldest_page to find the oldest page in the coremap
+		 * FIND To be EVICTED PAGE - Call find_oldest_page to find the oldest and clean page in the coremap
 		 */
 
-	if(!(page_found))
+		if(!(page_found))
 		{
-		//panic("no free page found\n");
 			index = find_oldest_page();
 
 			/* Now EVICT the page at the index returned from the find_oldest_page by calling FUNCTION: evict_coremap_entry */
-
-
 			evict_coremap_entry(index);
 			page_found = true;
 		}
@@ -836,7 +836,7 @@ alloc_upages()
 /**
  * Author: Pratham Malik
  * Function to normally evict the coremap entry at a particular index
- * NOTE: Currently we assume that the coremap lock is being held by the caller of this function
+ * NOTE: Currently we assume that the coremap lock is being acquired before this function is called
  */
 
 void
