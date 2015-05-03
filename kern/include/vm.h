@@ -156,10 +156,14 @@ find_npages(int npages);
 void
 evict_coremap_entry(int index);
 
+void
+swapout_coremap_entry(int index);
+
 paddr_t
-handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as);
+handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faulttype);
 
-
+int
+find_swapfile_entry(struct addrspace *as,vaddr_t va);
 
 
 

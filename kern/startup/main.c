@@ -139,6 +139,7 @@ boot(void)
 	int result= make_swap_file();
 	if(result){
 		kprintf("\n Swap file not created");
+		panic("Swap File not created");
 	}
 	/*
 	 * Make sure various things aren't screwed up.

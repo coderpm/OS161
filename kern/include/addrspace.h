@@ -55,10 +55,13 @@ struct page_table_entry
 
 	/**
 	 * present == 1 -- Entry present in coremap
-	 * present == 0 -- Swapped out currently
+	 * present == 0 -- Entry present in the disk
 	 */
 
 	unsigned int present:2;		//Variable for checking whether the page is in physical memory or disk
+
+	//Store the index in the swap file when the page is being swapped out
+	int swapfile_index;
 
 	struct page_table_entry *next;
 };
@@ -179,13 +182,20 @@ paddr_t alloc_newPage(struct addrspace *new);
 
 int load_elf(struct vnode *v, vaddr_t *entrypoint);
 
+/*
 void
 change_page_entry(struct page_table_entry *,paddr_t);
+*/
+
+void
+change_page_entry(int index);
+
 
 int
-write_page(struct page_table_entry entry, int index);
+write_page(paddr_t pa, int index);
+
 int
-read_page(struct page_table_entry entry, int index);
+read_page(paddr_t pa, int index);
 
 int
 make_swap_file(void);
