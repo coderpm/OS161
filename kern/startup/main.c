@@ -136,7 +136,10 @@ boot(void)
 	/* Default bootfs - but ignore failure, in case emu0 doesn't exist */
 	vfs_setbootfs("emu0");
 
-
+	int result= make_swap_file();
+	if(result){
+		kprintf("\n Swap file not created");
+	}
 	/*
 	 * Make sure various things aren't screwed up.
 	 */

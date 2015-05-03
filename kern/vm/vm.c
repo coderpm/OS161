@@ -29,6 +29,7 @@
 
 #include <types.h>
 #include <kern/errno.h>
+#include <kern/fcntl.h>
 #include <lib.h>
 #include <spl.h>
 #include <spinlock.h>
@@ -39,6 +40,9 @@
 #include <vm.h>
 #include <mips/vm.h>
 #include<clock.h>
+#include <vfs.h>
+#include <uio.h>
+#include <vnode.h>
 /*
  * Dumb MIPS-only "VM system" that is intended to only be just barely
  * enough to struggle off the ground. You should replace all of this
@@ -1080,4 +1084,68 @@ change_page_entry(struct page_table_entry *entry,paddr_t pa)
 		}
 			entry = head;
 	}
+}
+
+int
+write_page(struct page_table_entry entry, int index){
+	char name[9]= "anything";
+	char k_des[NAME_MAX];
+	memcpy(k_des, name,NAME_MAX);
+
+	struct vnode *v;
+	int result;
+	result = vfs_open(k_des,O_RDWR , 0, &v);
+	if (result) {
+		return result;
+	}
+	struct iovec iov;
+	struct uio uio;
+
+	uio_kinit(&iov, &uio, (void*)PADDR_TO_KVADDR(entry.pa), PAGE_SIZE, index*PAGE_SIZE, UIO_WRITE);
+
+	result= VOP_WRITE(v, &uio);
+	if(result){
+		return result;
+	}
+
+return 0;
+}
+
+int
+read_page(struct page_table_entry entry, int index){
+	char name[9]= "anything";
+	char k_des[NAME_MAX];
+	memcpy(k_des, name,NAME_MAX);
+
+	struct vnode *v;
+	int result;
+	result = vfs_open(k_des,O_RDWR , 0, &v);
+	if (result) {
+		return result;
+	}
+	struct iovec iov;
+	struct uio uio;
+
+	uio_kinit(&iov, &uio, (void*)PADDR_TO_KVADDR(entry.pa), PAGE_SIZE, index*PAGE_SIZE, UIO_READ);
+
+	result= VOP_READ(v, &uio);
+	if(result){
+		return result;
+	}
+return 0;
+}
+
+int
+make_swap_file(){
+	int result;
+	char name[9]= "anything";
+	char k_des[strlen(name)];
+	memcpy(k_des, name,strlen(name));
+
+	struct vnode *v;
+	result = vfs_open(k_des,O_CREAT, 0, &v);
+	if (result) {
+		return result;
+	}
+return 0;
 }
