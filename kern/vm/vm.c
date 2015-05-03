@@ -690,8 +690,6 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 							coremap[coremap_entry].page_status=2;
 						break;
 
-						default:
-						return 0;
 					}
 					//Re-assign back the head
 					as->page_table = head;
@@ -743,8 +741,6 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 							coremap[index].page_status=2;
 							break;
 
-						default:
-							return 0;
 					}
 
 					//Take swapfile lock
