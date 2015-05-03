@@ -174,4 +174,12 @@ int load_elf(struct vnode *v, vaddr_t *entrypoint);
 void
 change_page_entry(struct page_table_entry *,paddr_t);
 
+int
+write_page(struct page_table_entry entry, int index);
+int
+read_page(struct page_table_entry entry, int index);
+
+int
+make_swap_file(void);
+
 #endif /* _ADDRSPACE_H_ */
