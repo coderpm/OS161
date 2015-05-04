@@ -191,10 +191,10 @@ void
 change_page_entry(int index);
 
 
-int
+void
 write_page(paddr_t pa, int index);
 
-int
+void
 read_page(paddr_t pa, int index);
 
 int
