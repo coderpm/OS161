@@ -90,10 +90,20 @@ as_destroy(struct addrspace *as)
 		while(as->page_table!= NULL){
 			lock_acquire(as->lock_page_table);
 			next_page = as->page_table->next;
-			page_free(as->page_table->pa);
+			if(as->page_table->present==0){
+				//Acquiring lock for swap array
+				lock_acquire(swap_lock);
+					swap_info[as->page_table->swapfile_index]->va= 0;
+				lock_release(swap_lock);
+				//Release lock for swap array
+			}
+			else{
+				page_free(as->page_table->pa);
+			}
 			as->page_table->permissions=0;
 			as->page_table->present=0;
 			as->page_table->va=0;
+			as->page_table->swapfile_index=0;
 			lock_release(as->lock_page_table);
 			kfree(as->page_table);
 			as->page_table= next_page;
@@ -384,6 +394,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 				new->page_table->permissions= old->page_table->permissions;
 				new->page_table->present= old->page_table->present;
 				new->page_table->va= old->page_table->va;
+				//new->page_table->swapfile_index=0;
 				old->page_table= old->page_table->next;
 				if(old->page_table!= NULL){
 					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
@@ -401,6 +412,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 				new->page_table->permissions= old->page_table->permissions;
 				new->page_table->present= old->page_table->present;
 				new->page_table->va= old->page_table->va;
+				//new->page_table->swapfile_index=0;
 				old->page_table= old->page_table->next;
 				if(old->page_table!= NULL){
 					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));

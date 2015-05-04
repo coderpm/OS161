@@ -236,7 +236,7 @@ cpu_create(unsigned hardware_number)
 	spinlock_init(&c->c_runqueue_lock);
 
 	c->c_ipi_pending = 0;
-	c->c_numshootdown = 0;
+	c->c_numshootdown = -1;
 	spinlock_init(&c->c_ipi_lock);
 
 	result = cpuarray_add(&allcpus, c, &c->c_number);
