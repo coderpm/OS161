@@ -43,6 +43,8 @@
 #include <vfs.h>
 #include <uio.h>
 #include <vnode.h>
+#include <cpu.h>
+
 /*
  * Dumb MIPS-only "VM system" that is intended to only be just barely
  * enough to struggle off the ground. You should replace all of this
@@ -81,6 +83,14 @@ struct spinlock tlb_lock1;
 struct spinlock tlb_lock2;
 struct spinlock tlb_lock3;
 struct spinlock tlb_lock4;
+
+/*
+DECLARRAY(cpu);
+DEFARRAY(cpu, no inline);
+static struct cpuarray allcpus;
+*/
+
+
 
 //ENd of Additions by PM
 void
@@ -216,35 +226,98 @@ alloc_kpages(int npages)
 				 * Call function to Find the page table entry marked at address and change the page table present bit to 0
 				 */
 
-				//Take the page table lock
-				lock_acquire(coremap[index].as->lock_page_table);
-
-				panic("CHANGE PAGE ENTRY DOES NOT WORK HERE");
 				//TODO:: CHNAGE THIS
-//				change_page_entry(index);
+		//		change_page_entry(index);
 
-				//Release page table lock
-				lock_release(coremap[index].as->lock_page_table);
+				if(coremap[index].page_status==0)
+				{
+					//Just allocate
 
-				va = PADDR_TO_KVADDR(coremap[index].ce_paddr);
+					va = PADDR_TO_KVADDR(coremap[index].ce_paddr);
 
-				as_zero_region(coremap[index].ce_paddr,npages);
+					as_zero_region(coremap[index].ce_paddr,npages);
 
-				//Getting time
-				time_t seconds;
-				uint32_t nanoseconds;
-				gettime(&seconds, &nanoseconds);
+					//Getting time
+					time_t seconds;
+					uint32_t nanoseconds;
+					gettime(&seconds, &nanoseconds);
 
-				coremap[index].chunk_allocated=1;
-				coremap[index].as=curthread->t_addrspace;
-				coremap[index].page_status=1;
-				coremap[index].time= seconds+nanoseconds;
+					coremap[index].chunk_allocated=1;
+					coremap[index].as=curthread->t_addrspace;
+					coremap[index].page_status=1;
+					coremap[index].time= seconds+nanoseconds;
 
+					spinlock_release(&coremap_lock);
+
+
+				}
+				else if(coremap[index].page_status==3)
+				{
+					//Page is clean -- evict the current page
+					//Take the page table lock
+
+					evict_coremap_entry(index);
+					va = PADDR_TO_KVADDR(coremap[index].ce_paddr);
+
+					as_zero_region(coremap[index].ce_paddr,npages);
+
+					//Getting time
+					time_t seconds;
+					uint32_t nanoseconds;
+					gettime(&seconds, &nanoseconds);
+
+					coremap[index].chunk_allocated=1;
+					coremap[index].as=curthread->t_addrspace;
+					coremap[index].page_status=1;
+					coremap[index].time= seconds+nanoseconds;
+
+					spinlock_release(&coremap_lock);
+
+				}
+				else if(coremap[index].page_status==2)
+				{
+					//Page is dirty -- swap out the page first and then make the page available
+					int swap_index;
+					swap_index = swapout_change_coremap_entry(index);
+
+					va = PADDR_TO_KVADDR(coremap[index].ce_paddr);
+
+					//Getting time
+					time_t seconds;
+					uint32_t nanoseconds;
+					gettime(&seconds, &nanoseconds);
+
+					coremap[index].chunk_allocated=1;
+					coremap[index].as=curthread->t_addrspace;
+					coremap[index].page_status=1;
+					coremap[index].time= seconds+nanoseconds;
+
+/*
+					spinlock_release(&coremap_lock);
+					struct tlbshootdown *tlb_entry = kmalloc(sizeof(struct tlbshootdown));
+					struct cpu *c;
+
+					for(unsigned int i=0; i< cpuarray_num(&allcpus);i++)
+					{
+						c= cpuarray_get(&allcpus,i);
+						if(c != curcpu->c_self)
+							ipi_tlbshootdown(c,tlb_entry);
+					}
+*/
+
+					//Now write the file -- Swapout the old page
+					write_page(coremap[index].ce_paddr,swap_index);
+
+					//Zero the region
+					as_zero_region(coremap[index].ce_paddr,1);
+
+				}
 			}
 
 		}
 		else if(npages >1)
 		{
+			spinlock_acquire(&coremap_lock);
 			int index = find_page_available(npages);
 			if(index<0)
 				pa=0;
@@ -257,7 +330,7 @@ alloc_kpages(int npages)
 					//Take the page table lock
 					lock_acquire(coremap[index].as->lock_page_table);
 
-					panic("CHANGE PAGE ENTRY DOES NOT WORK HERE");
+					panic("CHANGE PAGE ENTRY DOES NOT WORK HERE IN NPAGES>1");
 					//TODO:: CHNAGE THIS
 //					change_page_entry(i);
 
@@ -282,8 +355,6 @@ alloc_kpages(int npages)
 
 			}
 		} //End of if checking whether npages more than 1
-
-		//Release the coremap lock
 		spinlock_release(&coremap_lock);
 
 		//Return the physical address retrieved from the coremap
@@ -601,6 +672,9 @@ paddr_t
 handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faulttype)
 {
 	paddr_t pa=0;
+	bool swap_status=false;
+	int swapout_index;
+
 	/**
 	 * First check if the address space is not null and if page table entry exists
 	 */
@@ -622,125 +696,49 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			//Take the coremap lock and find an index to map the entry
 			spinlock_acquire(&coremap_lock);
 
-			int index = alloc_upages();
+			int index;
+			index = find_available_page();
+			//Get the index of the the page which has to be swapped out
+			swapout_index = change_page_entry(index);
 
-			//Now decide what to do based on the current page status at the coremap[index]
+			//update the page table entries at that index
+			as->page_table->pa = coremap[index].ce_paddr;
+			as->page_table->permissions =permissions;
+			as->page_table->present=1;
+			as->page_table->va=faultaddr;
+			as->page_table->next=NULL;
 
-			if(coremap[index].page_status==0)
+
+			//Getting time
+			time_t seconds;
+			uint32_t nanoseconds;
+			gettime(&seconds, &nanoseconds);
+
+			//Update the coremap entries
+			coremap[index].as=as;
+			coremap[index].chunk_allocated=0;
+			coremap[index].page_status=2;
+			coremap[index].time=seconds+nanoseconds;
+
+			pa = coremap[index].ce_paddr;
+
+			if(swapout_index>0)
 			{
-				//Means the page was free -- NO SWAP OUT OR ANYTHING ELSE REQUIRED
-
-				//update the page table entries at that index
-				as->page_table->pa = coremap[index].ce_paddr;
-				as->page_table->permissions =permissions;
-				as->page_table->present=1;
-				as->page_table->va=faultaddr;
-				as->page_table->next=NULL;
-
-				//Zero the region
-				as_zero_region(coremap[index].ce_paddr,1);
-
-				//Getting time
-				time_t seconds;
-				uint32_t nanoseconds;
-				gettime(&seconds, &nanoseconds);
-
-				//Update the coremap entries
-				coremap[index].as=as;
-				coremap[index].chunk_allocated=0;
-				coremap[index].page_status=2;
-				coremap[index].time=seconds+nanoseconds;
-
-				pa = coremap[index].ce_paddr;
-
-				//Release the coremap lock
-				spinlock_release(&coremap_lock);
-				//Release the page table lock
-				lock_release(as->lock_page_table);
-
-				return pa;
+				//Means the existing page needs to be swapped out
+				swapout_page(coremap[index].ce_paddr,swapout_index);
 
 			}
-			else if(coremap[index].page_status==2)
-			{
-				/**
-				 * Means page was dirty -- swap out the previous page to swap file
-				 * And change entries for the current page
-				 */
 
-				int swap_index;
-				swap_index = swapout_change_coremap_entry(index);
+			//Zero the region
+			as_zero_region(coremap[index].ce_paddr,1);
 
-				//update the page table entries at that index
-				as->page_table->pa = coremap[index].ce_paddr;
-				as->page_table->permissions =permissions;
-				as->page_table->present=1;
-				as->page_table->va=faultaddr;
-				as->page_table->next=NULL;
+			//Release the coremap lock
+			spinlock_release(&coremap_lock);
+			//Release the page table lock
+			lock_release(as->lock_page_table);
 
-
-				//Getting time
-				time_t seconds;
-				uint32_t nanoseconds;
-				gettime(&seconds, &nanoseconds);
-
-				//Update the coremap entries
-				coremap[index].as=as;
-				coremap[index].chunk_allocated=0;
-				coremap[index].page_status=2;
-				coremap[index].time=seconds+nanoseconds;
-
-				pa = coremap[index].ce_paddr;
-
-				//Release the coremap lock
-				spinlock_release(&coremap_lock);
-				//Release the page table lock
-				lock_release(as->lock_page_table);
-
-				write_page(coremap[index].ce_paddr,swap_index);
-
-				//Zero the region
-				as_zero_region(coremap[index].ce_paddr,1);
-
-				return pa;
-
-			}
-			else if(coremap[index].page_status==3)
-			{
-				//Means the current mapped page was clean -- EVICT the Page
-				evict_coremap_entry(index);
-
-				//update the page table entries at that index
-				as->page_table->pa = coremap[index].ce_paddr;
-				as->page_table->permissions =permissions;
-				as->page_table->present=1;
-				as->page_table->va=faultaddr;
-				as->page_table->next=NULL;
-
-				//Getting time
-				time_t seconds;
-				uint32_t nanoseconds;
-				gettime(&seconds, &nanoseconds);
-
-				//Update the coremap entries
-				coremap[index].as=as;
-				coremap[index].chunk_allocated=0;
-				coremap[index].page_status=2;
-				coremap[index].time=seconds+nanoseconds;
-
-				pa = coremap[index].ce_paddr;
-
-				//Zero the region
-				as_zero_region(coremap[index].ce_paddr,1);
-
-				//Release the coremap lock
-				spinlock_release(&coremap_lock);
-				//Release the page table lock
-				lock_release(as->lock_page_table);
-
-				return pa;
-			}
 			return pa;
+
 	}
 	else if(as->page_table!=NULL)
 	{
@@ -800,199 +798,66 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 
 					spinlock_acquire(&coremap_lock);
 
-					//Get a new page
-					int index = alloc_upages();
+					int index;
+					index = find_available_page();
+					//Get the index of the the page which has to be swapped out
+					swapout_index = change_page_entry(index);
 
-					//Check and perform operation as per the current page status at coremap[index]
+					//update the page table entries at that index
+					as->page_table->pa = coremap[index].ce_paddr;
+					as->page_table->permissions=permissions;
+					as->page_table->present=1;
+					as->page_table->va=faultaddr;
 
-					if(coremap[index].page_status==0)
+					//Getting time
+					time_t seconds;
+					uint32_t nanoseconds;
+					gettime(&seconds, &nanoseconds);
+
+					//Update the coremap entries
+					coremap[index].as=as;
+					coremap[index].chunk_allocated=0;
+					coremap[index].time=seconds+nanoseconds;
+
+					pa = coremap[index].ce_paddr;
+
+					//Decide page status as per faulttype
+					switch (faulttype)
 					{
-						//Means page at index is currently free
+						case VM_FAULT_READ:
+							coremap[index].page_status=3;
+							break;
 
-						//update the page table entries at that index
-						as->page_table->pa = coremap[index].ce_paddr;
-						as->page_table->permissions=permissions;
-						as->page_table->present=1;
-						as->page_table->va=faultaddr;
-
-						//Zero the region
-						as_zero_region(coremap[index].ce_paddr,1);
-
-						//Getting time
-						time_t seconds;
-						uint32_t nanoseconds;
-						gettime(&seconds, &nanoseconds);
-
-						//Update the coremap entries
-						coremap[index].as=as;
-						coremap[index].chunk_allocated=0;
-						coremap[index].time=seconds+nanoseconds;
-
-						pa = coremap[index].ce_paddr;
-
-						//Decide page status as per faulttype
-						switch (faulttype)
-						{
-							case VM_FAULT_READ:
-								coremap[index].page_status=3;
-								break;
-
-							case VM_FAULT_WRITE:
-								coremap[index].page_status=2;
-								break;
-
-						}
-
-						int swap_index= as->page_table->swapfile_index;
-
-						//Re-assign back the head
-						as->page_table = head;
-
-						spinlock_release(&coremap_lock);
-						lock_release(as->lock_page_table);
-
-						//Zero the region
-						as_zero_region(coremap[index].ce_paddr,1);
-
-						//Swap in the page from the swapfile
-						read_page(pa,swap_index);
-
-						return pa;
-
+						case VM_FAULT_WRITE:
+							coremap[index].page_status=2;
+							break;
 
 					}
-					else if(coremap[index].page_status == 2)
+
+					int swapin_index= as->page_table->swapfile_index;
+
+					//Re-assign back the head
+					as->page_table = head;
+
+					spinlock_release(&coremap_lock);
+					lock_release(as->lock_page_table);
+					if(swapout_index>0)
 					{
-						/**
-						 * Means page was dirty -- swap out the previous page to swap file
-						 * And change entries for the current page
-						 * Then swap in the new page
-						 */
-
-						int swap_index;
-						//Called swapout_change_coremap_entry(index) to change the present bit of the page at
-						//that index of coremap to 0 signifying that the page has been swapped out
-						//Return the swap_index of file where we are supposed to write the file
-
-						swap_index = swapout_change_coremap_entry(index);
-
-						//update the page table entries at that index
-						as->page_table->pa = coremap[index].ce_paddr;
-						as->page_table->permissions=permissions;
-						as->page_table->present=1;
-						as->page_table->va=faultaddr;
-
-						//Getting time
-						time_t seconds;
-						uint32_t nanoseconds;
-						gettime(&seconds, &nanoseconds);
-
-						//Update the coremap entries
-						coremap[index].as=as;
-						coremap[index].chunk_allocated=0;
-						coremap[index].time=seconds+nanoseconds;
-
-						pa = coremap[index].ce_paddr;
-
-						int new_swap_index = as->page_table->swapfile_index;
-
-						//Decide page status as per faulttype
-						switch (faulttype)
-						{
-							case VM_FAULT_READ:
-								coremap[index].page_status=3;
-								break;
-
-							case VM_FAULT_WRITE:
-								coremap[index].page_status=2;
-								break;
-
-						}
-
-						//Re-assign back the head
-						as->page_table = head;
-
-						//Release the coremap lock
-						spinlock_release(&coremap_lock);
-
-						//Release the page table lock
-						lock_release(as->lock_page_table);
-
-						//Now swap out the previous entry and swap in the new entry
-
-						write_page(coremap[index].ce_paddr,swap_index);
-
-						//Zero the region
-						as_zero_region(coremap[index].ce_paddr,1);
-
-						//Swap in the page from the swapfile
-						read_page(pa,new_swap_index);
-
-						return pa;
+						//Means the existing page needs to be swapped out
+						swapout_page(coremap[index].ce_paddr,swapout_index);
 
 					}
-					else if(coremap[index].page_status==3)
-					{
-						//Means page at index is currently clean -- need to be evicted
-						//Means the current mapped page was clean -- EVICT the Page
+					//Zero the region
+					as_zero_region(coremap[index].ce_paddr,1);
 
-						evict_coremap_entry(index);
+					//Swap in the page from the swapfile
+					read_page(pa,swapin_index);
 
-						//update the page table entries at that index
-						as->page_table->pa = coremap[index].ce_paddr;
-						as->page_table->permissions=permissions;
-						as->page_table->present=1;
-						as->page_table->va=faultaddr;
+					return pa;
 
-						//Getting time
-						time_t seconds;
-						uint32_t nanoseconds;
-						gettime(&seconds, &nanoseconds);
-
-						//Update the coremap entries
-						coremap[index].as=as;
-						coremap[index].chunk_allocated=0;
-						coremap[index].time=seconds+nanoseconds;
-
-						pa = coremap[index].ce_paddr;
-
-						//Decide page status as per faulttype
-						switch (faulttype)
-						{
-							case VM_FAULT_READ:
-								coremap[index].page_status=3;
-								break;
-
-							case VM_FAULT_WRITE:
-								coremap[index].page_status=2;
-								break;
-
-						}
-
-
-						int swap_index;
-						swap_index= as->page_table->swapfile_index;
-
-						//Re-assign back the head
-						as->page_table = head;
-
-						//Release the coremap lock
-						spinlock_release(&coremap_lock);
-						//Release the page table lock
-						lock_release(as->lock_page_table);
-
-						//Zero the region
-						as_zero_region(coremap[index].ce_paddr,1);
-
-
-						//Swap in the page from the swapfile
-						read_page(pa,swap_index);
-
-						return pa;
-
-					}
 				}
 			}
+
 
 			//Move to next entry in the page table link list
 			as->page_table = as->page_table->next;
@@ -1010,150 +875,101 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			//Take the coremap lock and find an index to map the entry
 			spinlock_acquire(&coremap_lock);
 
-			int index = alloc_upages();
+			int index;
+			index = find_available_page();
+			//Get the index of the the page which has to be swapped out
+			swapout_index = change_page_entry(index);
 
-			//Do operations as per the index
-			if(coremap[index].page_status==0)
+			//update the page table entries at that index
+			entry->pa = coremap[index].ce_paddr;
+			entry->permissions =permissions;
+			entry->present=1;
+			entry->va=faultaddr;
+
+			entry->next=head;
+
+			//Getting time
+			time_t seconds;
+			uint32_t nanoseconds;
+			gettime(&seconds, &nanoseconds);
+
+			//Update the coremap entries
+			coremap[index].as=as;
+			coremap[index].chunk_allocated=0;
+			coremap[index].page_status=2;
+			coremap[index].time=seconds+nanoseconds;
+
+			pa = coremap[index].ce_paddr;
+
+			/*add the entry created to the head of the page table list*/
+			as->page_table= entry;
+
+			//Release the coremap lock
+			spinlock_release(&coremap_lock);
+			//Release the page table lock
+			lock_release(as->lock_page_table);
+
+			if(swapout_index>0)
 			{
-				//Meaning a free page
-				//update the page table entries at that index
-				entry->pa = coremap[index].ce_paddr;
-				entry->permissions =permissions;
-				entry->present=1;
-				entry->va=faultaddr;
-
-				entry->next=head;
-
-				//Zero the region
-				as_zero_region(coremap[index].ce_paddr,1);
-
-				//Getting time
-				time_t seconds;
-				uint32_t nanoseconds;
-				gettime(&seconds, &nanoseconds);
-
-				//Update the coremap entries
-				coremap[index].as=as;
-				coremap[index].chunk_allocated=0;
-				coremap[index].page_status=2;
-				coremap[index].time=seconds+nanoseconds;
-
-				pa = coremap[index].ce_paddr;
-
-				/*add the entry created to the head of the page table list*/
-				as->page_table= entry;
-
-				//Release the coremap lock
-				spinlock_release(&coremap_lock);
-				//Release the page table lock
-				lock_release(as->lock_page_table);
-
-				return pa;
+				//Means the existing page needs to be swapped out
+				swapout_page(coremap[index].ce_paddr,swapout_index);
 
 			}
-			else if(coremap[index].page_status==2)
-			{
-				//Meaning a swapped out page
-				int swap_index;
-				//Called swapout_change_coremap_entry(index) to change the present bit of the page at
-				//that index of coremap to 0 signifying that the page has been swapped out
-				//Return the swap_index of file where we are supposed to write the file
-				swap_index = swapout_change_coremap_entry(index);
+			//Zero the region
+			as_zero_region(coremap[index].ce_paddr,1);
 
-				//update the page table entries at that index
-				entry->pa = coremap[index].ce_paddr;
-				entry->permissions =permissions;
-				entry->present=1;
-				entry->va=faultaddr;
-
-				entry->next=head;
-
-				//Getting time
-				time_t seconds;
-				uint32_t nanoseconds;
-				gettime(&seconds, &nanoseconds);
-
-				//Update the coremap entries
-				coremap[index].as=as;
-				coremap[index].chunk_allocated=0;
-				coremap[index].page_status=2;
-				coremap[index].time=seconds+nanoseconds;
-
-				pa = coremap[index].ce_paddr;
-
-				/*add the entry created to the head of the page table list*/
-				as->page_table= entry;
-
-				//Release the coremap lock
-				spinlock_release(&coremap_lock);
-				//Release the page table lock
-				lock_release(as->lock_page_table);
-
-				//Swapout the old page
-				write_page(coremap[index].ce_paddr,swap_index);
-
-				//Zero the region
-				as_zero_region(coremap[index].ce_paddr,1);
-
-				return pa;
-
-
-
-			}
-			else if(coremap[index].page_status==3)
-			{
-				//Meaning a clean page
-				evict_coremap_entry(index);
-
-				//update the page table entries at that index
-				entry->pa = coremap[index].ce_paddr;
-				entry->permissions =permissions;
-				entry->present=1;
-				entry->va=faultaddr;
-
-				entry->next=head;
-
-				//Getting time
-				time_t seconds;
-				uint32_t nanoseconds;
-				gettime(&seconds, &nanoseconds);
-
-				//Update the coremap entries
-				coremap[index].as=as;
-				coremap[index].chunk_allocated=0;
-				coremap[index].page_status=2;
-				coremap[index].time=seconds+nanoseconds;
-
-				pa = coremap[index].ce_paddr;
-
-				/*add the entry created to the head of the page table list*/
-				as->page_table= entry;
-
-				//Zero the region
-				as_zero_region(coremap[index].ce_paddr,1);
-
-				//Release the coremap lock
-				spinlock_release(&coremap_lock);
-				//Release the page table lock
-				lock_release(as->lock_page_table);
-
-				return pa;
-
-			}
-
-
-
+			return pa;
 
 		}////Meaning no page has been mapped till now for the fault address that is why pa has not been assigned till now
 
-
-
 	}//End of IF checking whether the page table entries is not NULL
-
-
 
 	return pa;
 }
+
+/*
+ * Change_page_entry function
+ */
+int
+change_page_entry(int index)
+{
+	int swap_index=-1;
+	//Now decide what to do based on the current page status at the coremap[index]
+
+	if(coremap[index].page_status==0)
+	{
+		//Meaning the page was free
+		//Do Nothing
+
+	}
+	else if(coremap[index].page_status==3)
+	{
+		//Meaning the page was clean and just needs to be evicted
+		evict_coremap_entry(index);
+	}
+	else if(coremap[index].page_status==2)
+	{
+		/**
+		* Meaning that the page is dirty --Give a call to find swapindex of the page at coremap[index]
+		* Call function to swapout the page at the index
+		*/
+		swap_index = swapout_change_coremap_entry(index);
+	}
+
+	return swap_index;
+}
+/**
+ * Author: Pratham Malik
+ *Swaps out the page to file
+ */
+void
+swapout_page(paddr_t pa,int index)
+{
+	write_page(pa,index);
+}
+
+
+
 
 /**
  * Author: Pratham Malik
@@ -1507,6 +1323,7 @@ write_page(paddr_t pa, int index)
 	int result;
 	result = vfs_open(k_des,O_RDWR , 0, &v);
 	if (result) {
+
 		panic("Not able to open the SWAP FILE");
 	}
 	struct iovec iov;
@@ -1532,6 +1349,7 @@ read_page(paddr_t pa, int index)
 	int result;
 	result = vfs_open(k_des,O_RDWR , 0, &v);
 	if (result) {
+
 		panic("Not able to open the SWAP FILE");
 	}
 	struct iovec iov;
@@ -1641,9 +1459,9 @@ find_swapfile_entry(struct addrspace *as,vaddr_t va)
 	//Scan the swapfile array
 	for(counter=1;counter<SWAP_MAX;counter++)
 	{
-		if((swap_info[counter]->addr==NULL) || (swap_info[counter]->addr==0))
+		if((swap_info[counter]->va==0))
 			continue;
-		else if((swap_info[counter]->addr == as) || (swap_info[counter]->va == va))
+		else if((swap_info[counter]->addr == as) && (swap_info[counter]->va == va))
 		{
 			index=counter;
 			break;
@@ -1652,21 +1470,63 @@ find_swapfile_entry(struct addrspace *as,vaddr_t va)
 	if(index==-1)
 	{
 		//Means no entry found -- Allocate an entry for the same
-		for(counter=0;counter<SWAP_MAX;counter++)
+		for(counter=1;counter<SWAP_MAX;counter++)
 		{
-			if((swap_info[counter]->addr ==NULL) || (swap_info[counter]->addr == 0))
+			if((swap_info[counter]->va == 0))
 			{
 				index=counter;
+				swap_info[counter]->addr=as;
+				swap_info[counter]->va=va;
 				break;
 			}
 		}
 	}
 
 	lock_release(swap_lock);
-	coremap[index].as->page_table= coremap[index].as->page_table->next;
-
 
 	return index;
 }
 
+/**
+ * Function to find available page entry to map the page va
+ */
+
+int
+find_available_page()
+{
+	int counter=0;
+	int index=-1;
+	bool page_found=false;
+
+
+	while(!(page_found))
+	{
+		for(counter=coremap_pages;counter<total_systempages;counter++)
+		{
+			if(coremap[counter].page_status==0)
+			{
+				//Means found the page with status as free
+				index=counter;
+				page_found=true;
+
+				break;
+			}
+		}
+
+		/**
+		 * Means no page found which is free --
+		 * FIND To be EVICTED PAGE - Call find_oldest_page to find the (oldest and clean page) or (just the oldest)in the coremap
+		 */
+
+		if(!(page_found))
+		{
+			index = find_oldest_page();
+			page_found = true;
+		}
+
+	}//End of while loop in page_found
+
+	return index;
+
+}
 

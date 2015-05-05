@@ -165,6 +165,13 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 int
 find_swapfile_entry(struct addrspace *as,vaddr_t va);
 
+int
+find_available_page(void);
 
+void
+swapout_page(paddr_t pa,int index);
+
+int
+change_page_entry(int index);
 
 #endif /* _VM_H_ */
