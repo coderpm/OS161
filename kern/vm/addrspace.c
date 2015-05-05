@@ -398,7 +398,8 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
 								PAGE_SIZE);
 				}else{
-					read_page(old->page_table->pa, old->page_table->swapfile_index);
+					swapin_page(old->page_table->pa, old->page_table->swapfile_index);
+//					read_page(old->page_table->pa, old->page_table->swapfile_index);
 				}
 				new->page_table->permissions= old->page_table->permissions;
 				new->page_table->present= 1;
@@ -420,7 +421,8 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
 								PAGE_SIZE);
 				}else{
-						read_page(old->page_table->pa, old->page_table->swapfile_index);
+					swapin_page(old->page_table->pa, old->page_table->swapfile_index);
+//					read_page(old->page_table->pa, old->page_table->swapfile_index);
 				}
 				new->page_table->permissions= old->page_table->permissions;
 				new->page_table->present= 1;

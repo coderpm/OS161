@@ -200,7 +200,6 @@ alloc_kpages(int npages)
 		//Means that coremap has been initialized and now allocate pages from the coremap
 
 
-
 		if(npages==1)
 		{
 			spinlock_acquire(&coremap_lock);
@@ -258,16 +257,14 @@ alloc_kpages(int npages)
 
 				if(swapout_index>0)
 				{
-
 					my_tlb_shhotdown(tlb_vaddr);
 					//Means the existing page needs to be swapped out
 					swapout_page(pa,swapout_index);
-
 				}
+
 				as_zero_region(coremap[index].ce_paddr,npages);
 
 				return va;
-
 
 			}
 
@@ -311,7 +308,7 @@ alloc_kpages(int npages)
 
 				coremap[index].chunk_allocated=npages;
 				as_zero_region(coremap[index].ce_paddr,npages);
-				spinlock_acquire(&coremap_lock);
+				spinlock_release(&coremap_lock);
 			}
 		} //End of if checking whether npages more than 1
 
@@ -1073,7 +1070,7 @@ evict_coremap_entry(int index)
 		head= coremap[index].as->page_table;
 		//Iterate over the page table entries
 
-		while(coremap[index].as !=NULL)
+		while(coremap[index].as->page_table !=NULL)
 		{
 			if(coremap[index].ce_paddr == coremap[index].as->page_table->pa)
 			{
@@ -1345,15 +1342,15 @@ void
 write_page(paddr_t pa, int index)
 {
 
-	char k_des[NAME_MAX];
-	memcpy(k_des,SWAP_FILE,NAME_MAX);
+	//char k_des[NAME_MAX];
+	//memcpy(k_des,SWAP_FILE,NAME_MAX);
 
 	//struct vnode *v;
 	int result;
 	struct iovec iov;
 	struct uio uio;
 
-	uio_kinit(&iov, &uio, (void*)PADDR_TO_KVADDR(pa), PAGE_SIZE, index*PAGE_SIZE, UIO_WRITE);
+	uio_kinit(&iov, &uio, (void*)PADDR_TO_KVADDR(pa), PAGE_SIZE, ((index-1)*PAGE_SIZE), UIO_WRITE);
 
 	result= VOP_WRITE(swapfile_vnode, &uio);
 	if(result){
@@ -1367,8 +1364,6 @@ void
 read_page(paddr_t pa, int index)
 {
 
-	char k_des[NAME_MAX];
-	memcpy(k_des, SWAP_FILE,NAME_MAX);
 
 	//struct vnode *v;
 	int result;
@@ -1376,7 +1371,7 @@ read_page(paddr_t pa, int index)
 	struct iovec iov;
 	struct uio uio;
 
-	uio_kinit(&iov, &uio, (void*)PADDR_TO_KVADDR(pa), PAGE_SIZE, index*PAGE_SIZE, UIO_READ);
+	uio_kinit(&iov, &uio, (void*)PADDR_TO_KVADDR(pa), PAGE_SIZE, ((index-1)*PAGE_SIZE), UIO_READ);
 
 	result= VOP_READ(swapfile_vnode, &uio);
 	if(result){
