@@ -78,6 +78,11 @@ struct spinlock coremap_lock= SPINLOCK_INITIALIZER;
 
 struct swap_elements *swap_info[SWAP_MAX];
 struct lock *swap_lock;
+struct vnode *swapfile_vnode;
+struct lock *swap_file_lock;
+
+unsigned int swap_bit; // 0 means No Write , 1 means Yes Write
+struct cv *cv_swap;
 
 struct spinlock tlb_lock1;
 struct spinlock tlb_lock2;
@@ -194,10 +199,11 @@ alloc_kpages(int npages)
 	{
 		//Means that coremap has been initialized and now allocate pages from the coremap
 
-		spinlock_acquire(&coremap_lock);
+
 
 		if(npages==1)
 		{
+			spinlock_acquire(&coremap_lock);
 			//Call function to find the available page
 			int index = find_page_available(npages);
 
@@ -218,6 +224,9 @@ alloc_kpages(int npages)
 				coremap[index].as=curthread->t_addrspace;
 				coremap[index].page_status=1;
 				coremap[index].time= seconds+nanoseconds;
+
+				spinlock_release(&coremap_lock);
+
 			}
 			else
 			{
@@ -226,92 +235,38 @@ alloc_kpages(int npages)
 				 * Call function to Find the page table entry marked at address and change the page table present bit to 0
 				 */
 
-				//TODO:: CHNAGE THIS
-		//		change_page_entry(index);
 
-				if(coremap[index].page_status==0)
+				//Get the index of the the page which has to be swapped out
+				int swapout_index;
+				vaddr_t tlb_vaddr;
+				swapout_index = change_page_entry(index,&tlb_vaddr);
+
+				va = PADDR_TO_KVADDR(coremap[index].ce_paddr);
+
+				//Getting time
+				time_t seconds;
+				uint32_t nanoseconds;
+				gettime(&seconds, &nanoseconds);
+
+				coremap[index].chunk_allocated=1;
+				coremap[index].as=curthread->t_addrspace;
+				coremap[index].page_status=1;
+				coremap[index].time= seconds+nanoseconds;
+
+				spinlock_release(&coremap_lock);
+
+				if(swapout_index>0)
 				{
-					//Just allocate
 
-					va = PADDR_TO_KVADDR(coremap[index].ce_paddr);
-
-					as_zero_region(coremap[index].ce_paddr,npages);
-
-					//Getting time
-					time_t seconds;
-					uint32_t nanoseconds;
-					gettime(&seconds, &nanoseconds);
-
-					coremap[index].chunk_allocated=1;
-					coremap[index].as=curthread->t_addrspace;
-					coremap[index].page_status=1;
-					coremap[index].time= seconds+nanoseconds;
-
-					spinlock_release(&coremap_lock);
-
+					my_tlb_shhotdown(tlb_vaddr);
+					//Means the existing page needs to be swapped out
+					swapout_page(coremap[index].ce_paddr,swapout_index);
 
 				}
-				else if(coremap[index].page_status==3)
-				{
-					//Page is clean -- evict the current page
-					//Take the page table lock
+				as_zero_region(coremap[index].ce_paddr,npages);
 
-					evict_coremap_entry(index);
-					va = PADDR_TO_KVADDR(coremap[index].ce_paddr);
 
-					as_zero_region(coremap[index].ce_paddr,npages);
 
-					//Getting time
-					time_t seconds;
-					uint32_t nanoseconds;
-					gettime(&seconds, &nanoseconds);
-
-					coremap[index].chunk_allocated=1;
-					coremap[index].as=curthread->t_addrspace;
-					coremap[index].page_status=1;
-					coremap[index].time= seconds+nanoseconds;
-
-					spinlock_release(&coremap_lock);
-
-				}
-				else if(coremap[index].page_status==2)
-				{
-					//Page is dirty -- swap out the page first and then make the page available
-					int swap_index;
-					swap_index = swapout_change_coremap_entry(index);
-
-					va = PADDR_TO_KVADDR(coremap[index].ce_paddr);
-
-					//Getting time
-					time_t seconds;
-					uint32_t nanoseconds;
-					gettime(&seconds, &nanoseconds);
-
-					coremap[index].chunk_allocated=1;
-					coremap[index].as=curthread->t_addrspace;
-					coremap[index].page_status=1;
-					coremap[index].time= seconds+nanoseconds;
-
-/*
-					spinlock_release(&coremap_lock);
-					struct tlbshootdown *tlb_entry = kmalloc(sizeof(struct tlbshootdown));
-					struct cpu *c;
-
-					for(unsigned int i=0; i< cpuarray_num(&allcpus);i++)
-					{
-						c= cpuarray_get(&allcpus,i);
-						if(c != curcpu->c_self)
-							ipi_tlbshootdown(c,tlb_entry);
-					}
-*/
-
-					//Now write the file -- Swapout the old page
-					write_page(coremap[index].ce_paddr,swap_index);
-
-					//Zero the region
-					as_zero_region(coremap[index].ce_paddr,1);
-
-				}
 			}
 
 		}
@@ -352,10 +307,9 @@ alloc_kpages(int npages)
 
 				coremap[index].chunk_allocated=npages;
 				as_zero_region(coremap[index].ce_paddr,npages);
-
+				spinlock_acquire(&coremap_lock);
 			}
 		} //End of if checking whether npages more than 1
-		spinlock_release(&coremap_lock);
 
 		//Return the physical address retrieved from the coremap
 		return va;
@@ -427,14 +381,21 @@ free_kpages(vaddr_t addr)
 void
 vm_tlbshootdown_all(void)
 {
-	panic("dumbvm tried to do tlb shootdown?!\n");
+	panic("dumbvmXXXXXXXX tried to do tlb shootdown?!\n");
 }
 
 void
 vm_tlbshootdown(const struct tlbshootdown *ts)
 {
-	(void)ts;
-	panic("dumbvm tried to do tlb shootdown?!\n");
+	int i, spl;
+	spl = splhigh();
+
+	i = tlb_probe(ts->ts_vaddr, 0);
+	if(i>0){
+		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+	}
+
+	splx(spl);
 }
 
 int
@@ -672,7 +633,6 @@ paddr_t
 handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faulttype)
 {
 	paddr_t pa=0;
-	bool swap_status=false;
 	int swapout_index;
 
 	/**
@@ -699,7 +659,8 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			int index;
 			index = find_available_page();
 			//Get the index of the the page which has to be swapped out
-			swapout_index = change_page_entry(index);
+			vaddr_t tlb_vaddr;
+			swapout_index = change_page_entry(index,&tlb_vaddr);
 
 			//update the page table entries at that index
 			as->page_table->pa = coremap[index].ce_paddr;
@@ -722,8 +683,14 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 
 			pa = coremap[index].ce_paddr;
 
+			//Release the coremap lock
+			spinlock_release(&coremap_lock);
+			//Release the page table lock
+			lock_release(as->lock_page_table);
+
 			if(swapout_index>0)
 			{
+				my_tlb_shhotdown(tlb_vaddr);
 				//Means the existing page needs to be swapped out
 				swapout_page(coremap[index].ce_paddr,swapout_index);
 
@@ -731,11 +698,6 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 
 			//Zero the region
 			as_zero_region(coremap[index].ce_paddr,1);
-
-			//Release the coremap lock
-			spinlock_release(&coremap_lock);
-			//Release the page table lock
-			lock_release(as->lock_page_table);
 
 			return pa;
 
@@ -768,13 +730,14 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 				//Mapping exists - Now check if the present bit for the mapping is true or false
 				if(as->page_table->present == 1)
 				{
-					//Take the coremap lock and find an index to map the entry
-					spinlock_acquire(&coremap_lock);
 
 					//present bit is true -- means it is present in memory
 					pa = as->page_table->pa;
 					int coremap_entry_index;
 					coremap_entry_index = ((pa- coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+
+					//Take the coremap lock and find an index to map the entry
+					spinlock_acquire(&coremap_lock);
 
 					//Change the page status to dirty if faulttype is write
 					switch (faulttype)
@@ -801,7 +764,8 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					int index;
 					index = find_available_page();
 					//Get the index of the the page which has to be swapped out
-					swapout_index = change_page_entry(index);
+					vaddr_t tlb_vaddr;
+					swapout_index = change_page_entry(index,&tlb_vaddr);
 
 					//update the page table entries at that index
 					as->page_table->pa = coremap[index].ce_paddr;
@@ -843,15 +807,18 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					lock_release(as->lock_page_table);
 					if(swapout_index>0)
 					{
+
+						my_tlb_shhotdown(tlb_vaddr);
 						//Means the existing page needs to be swapped out
 						swapout_page(coremap[index].ce_paddr,swapout_index);
 
 					}
+
 					//Zero the region
 					as_zero_region(coremap[index].ce_paddr,1);
 
 					//Swap in the page from the swapfile
-					read_page(pa,swapin_index);
+					swapin_page(pa,swapin_index);
 
 					return pa;
 
@@ -878,7 +845,9 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			int index;
 			index = find_available_page();
 			//Get the index of the the page which has to be swapped out
-			swapout_index = change_page_entry(index);
+			vaddr_t tlb_vaddr;
+			swapout_index = change_page_entry(index,&tlb_vaddr);
+
 
 			//update the page table entries at that index
 			entry->pa = coremap[index].ce_paddr;
@@ -911,6 +880,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 
 			if(swapout_index>0)
 			{
+				my_tlb_shhotdown(tlb_vaddr);
 				//Means the existing page needs to be swapped out
 				swapout_page(coremap[index].ce_paddr,swapout_index);
 
@@ -931,9 +901,10 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
  * Change_page_entry function
  */
 int
-change_page_entry(int index)
+change_page_entry(int index, vaddr_t *va)
 {
 	int swap_index=-1;
+	vaddr_t va_ret;
 	//Now decide what to do based on the current page status at the coremap[index]
 
 	if(coremap[index].page_status==0)
@@ -953,7 +924,8 @@ change_page_entry(int index)
 		* Meaning that the page is dirty --Give a call to find swapindex of the page at coremap[index]
 		* Call function to swapout the page at the index
 		*/
-		swap_index = swapout_change_coremap_entry(index);
+		swap_index = swapout_change_coremap_entry(index,&va_ret);
+		*va=va_ret;
 	}
 
 	return swap_index;
@@ -961,11 +933,47 @@ change_page_entry(int index)
 /**
  * Author: Pratham Malik
  *Swaps out the page to file
+ * Checks out the swap bit for the swap file if some is writing
+ *
  */
 void
 swapout_page(paddr_t pa,int index)
 {
+	lock_acquire(swap_file_lock);
+
+	while(swap_bit!=0)
+	{
+		cv_wait(cv_swap,swap_file_lock);
+	}
+
+	//Make the swap_bit =1
+	swap_bit=1;
 	write_page(pa,index);
+
+	cv_signal(cv_swap,swap_file_lock);
+
+	lock_release(swap_file_lock);
+
+}
+
+void
+swapin_page(paddr_t pa,int index)
+{
+	lock_acquire(swap_file_lock);
+
+	while(swap_bit!=0)
+	{
+		cv_wait(cv_swap,swap_file_lock);
+	}
+
+	//Make the swap_bit =1
+	swap_bit=1;
+	read_page(pa,index);
+
+	cv_signal(cv_swap,swap_file_lock);
+
+	lock_release(swap_file_lock);
+
 }
 
 
@@ -1319,22 +1327,21 @@ write_page(paddr_t pa, int index)
 	char k_des[NAME_MAX];
 	memcpy(k_des,SWAP_FILE,NAME_MAX);
 
-	struct vnode *v;
+	//struct vnode *v;
 	int result;
-	result = vfs_open(k_des,O_RDWR , 0, &v);
-	if (result) {
 
-		panic("Not able to open the SWAP FILE");
-	}
+
 	struct iovec iov;
 	struct uio uio;
 
 	uio_kinit(&iov, &uio, (void*)PADDR_TO_KVADDR(pa), PAGE_SIZE, index*PAGE_SIZE, UIO_WRITE);
 
-	result= VOP_WRITE(v, &uio);
+	result= VOP_WRITE(swapfile_vnode, &uio);
 	if(result){
+		lock_release(swap_file_lock);
 		panic("Not able to write to SWAP FILE");
 	}
+
 
 }
 
@@ -1345,22 +1352,25 @@ read_page(paddr_t pa, int index)
 	char k_des[NAME_MAX];
 	memcpy(k_des, SWAP_FILE,NAME_MAX);
 
-	struct vnode *v;
+	//struct vnode *v;
 	int result;
-	result = vfs_open(k_des,O_RDWR , 0, &v);
+	/*result = vfs_open(k_des,O_RDWR , 0, &v);
 	if (result) {
 
 		panic("Not able to open the SWAP FILE");
-	}
+	}*/
+
 	struct iovec iov;
 	struct uio uio;
 
 	uio_kinit(&iov, &uio, (void*)PADDR_TO_KVADDR(pa), PAGE_SIZE, index*PAGE_SIZE, UIO_READ);
 
-	result= VOP_READ(v, &uio);
+	result= VOP_READ(swapfile_vnode, &uio);
 	if(result){
+		lock_release(swap_file_lock);
 		panic("Not able to read from SWAP FILE");
 	}
+
 }
 
 int
@@ -1368,14 +1378,17 @@ make_swap_file()
 {
 	int result;
 
+	swap_file_lock= lock_create("swapfile_lock");
+	cv_swap = cv_create("swap_file_CV");
 
-	char k_des[strlen(SWAP_FILE)];
-	memcpy(k_des, SWAP_FILE,strlen(SWAP_FILE));
+	char k_des[NAME_MAX];
+	memcpy(k_des, SWAP_FILE,NAME_MAX);
 
-	struct vnode *v;
-	result = vfs_open(k_des,O_CREAT, 0, &v);
+
+	result = vfs_open(k_des,O_CREAT, 0, &swapfile_vnode);
 
 	if (result) {
+		lock_release(swap_file_lock);
 		return result;
 	}
 
@@ -1405,7 +1418,7 @@ return 0;
  */
 //TODO:::: Change the logic as to what to do in order to find the swap entry
 int
-swapout_change_coremap_entry(int index)
+swapout_change_coremap_entry(int index, vaddr_t *va)
 {
 	int swap_index=-1;
 	//Take the page table lock
@@ -1427,7 +1440,7 @@ swapout_change_coremap_entry(int index)
 
 				//Call function to write this to the swap file
 				swap_index = find_swapfile_entry(coremap[index].as,coremap[index].as->page_table->va);
-
+				*va = coremap[index].as->page_table->va;
 				//Write back the index to the page table entry
 				coremap[index].as->page_table->swapfile_index = swap_index;
 				break;

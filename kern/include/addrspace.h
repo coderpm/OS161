@@ -39,7 +39,7 @@
 #include "opt-dumbvm.h"
 
 struct vnode;
-
+struct cpu;
 /**
  * Added by Pratham Malik for ASST3 - VM
  */
@@ -181,15 +181,6 @@ paddr_t alloc_newPage(struct addrspace *new);
  */
 
 int load_elf(struct vnode *v, vaddr_t *entrypoint);
-
-/*
-void
-change_page_entry(struct page_table_entry *,paddr_t);
-*/
-
-void
-change_page_entry(int index);
-
 
 void
 write_page(paddr_t pa, int index);

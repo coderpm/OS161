@@ -41,7 +41,7 @@
 #include <current.h>
 #include <mips/tlb.h>
 #include <addrspace.h>
-#include<clock.h>
+#include <clock.h>
 
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -90,10 +90,20 @@ as_destroy(struct addrspace *as)
 		while(as->page_table!= NULL){
 			lock_acquire(as->lock_page_table);
 			next_page = as->page_table->next;
-			page_free(as->page_table->pa);
+			if(as->page_table->present==0){
+				//Acquiring lock for swap array
+				lock_acquire(swap_lock);
+					swap_info[as->page_table->swapfile_index]->va= 0;
+				lock_release(swap_lock);
+				//Release lock for swap array
+			}
+			else{
+				page_free(as->page_table->pa);
+			}
 			as->page_table->permissions=0;
 			as->page_table->present=0;
 			as->page_table->va=0;
+			as->page_table->swapfile_index=0;
 			lock_release(as->lock_page_table);
 			kfree(as->page_table);
 			as->page_table= next_page;
@@ -367,8 +377,13 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		//Setting the pointer to the start of the list
 		old->regions= oldregionshead;
 		new->regions= newregionshead;
+		new->heap_end= old->heap_end;
+		new->heap_start= old->heap_start;
+		new->stackbase_base= old->stackbase_base;
+		new->stackbase_top= old->stackbase_top;
 
 		//Coping page table to new address space page table structure
+		//lock_acquire(old->lock_page_table);
 		struct page_table_entry *new_ptentry_head;
 		struct page_table_entry *old_ptentry_head;
 		old_ptentry_head = old->page_table;
@@ -378,12 +393,17 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 				new->page_table=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
 				new_ptentry_head= new->page_table;
 				new->page_table->pa= alloc_newPage(new);
-				memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
+				if(old->page_table->present== 1){
+					memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
 							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
-							PAGE_SIZE);
+								PAGE_SIZE);
+				}else{
+					read_page(old->page_table->pa, old->page_table->swapfile_index);
+				}
 				new->page_table->permissions= old->page_table->permissions;
-				new->page_table->present= old->page_table->present;
+				new->page_table->present= 1;
 				new->page_table->va= old->page_table->va;
+				new->page_table->swapfile_index=0;
 				old->page_table= old->page_table->next;
 				if(old->page_table!= NULL){
 					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
@@ -395,12 +415,17 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 			}
 			else{
 				new->page_table->pa= alloc_newPage(new);
-				memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
+				if(old->page_table->present== 1){
+						memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
 							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
-							PAGE_SIZE);
+								PAGE_SIZE);
+				}else{
+						read_page(old->page_table->pa, old->page_table->swapfile_index);
+				}
 				new->page_table->permissions= old->page_table->permissions;
-				new->page_table->present= old->page_table->present;
+				new->page_table->present= 1;
 				new->page_table->va= old->page_table->va;
+				new->page_table->swapfile_index=0;
 				old->page_table= old->page_table->next;
 				if(old->page_table!= NULL){
 					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
@@ -415,12 +440,10 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		//Setting the head to the start of the list
 		old->page_table= old_ptentry_head;
 		new->page_table= new_ptentry_head;
+		//lock_release(old->lock_page_table);
 
 		//Coping rest of the remaining entries in the old structure to new structure
-		new->heap_end= old->heap_end;
-		new->heap_start= old->heap_start;
-		new->stackbase_base= old->stackbase_base;
-		new->stackbase_top= old->stackbase_top;
+
 
 
 		*ret = new;
@@ -429,13 +452,18 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 }
 
 paddr_t alloc_newPage(struct addrspace *new){
-	paddr_t newaddr=0;
-	spinlock_acquire(&coremap_lock);
-	int index= alloc_upages();
-	//Zero the region
-	as_zero_region(coremap[index].ce_paddr,1);
 
-	newaddr= coremap[index].ce_paddr;
+	paddr_t newaddr=0;
+	int index;
+
+	spinlock_acquire(&coremap_lock);
+
+	index = find_available_page();
+	//Get the index of the the page which has to be swapped out
+	vaddr_t tlb_vaddr;
+	int swapout_index;
+	swapout_index = change_page_entry(index,&tlb_vaddr);
+
 	//Getting time
 	time_t seconds;
 	uint32_t nanoseconds;
@@ -447,7 +475,21 @@ paddr_t alloc_newPage(struct addrspace *new){
 	coremap[index].page_status=2;
 	coremap[index].time=seconds+nanoseconds;
 
+	newaddr = coremap[index].ce_paddr;
+
+	//Release the coremap lock
 	spinlock_release(&coremap_lock);
+
+
+	if(swapout_index>0)
+	{
+		my_tlb_shhotdown(tlb_vaddr);
+		//Means the existing page needs to be swapped out
+		swapout_page(coremap[index].ce_paddr,swapout_index);
+	}
+
+	//Zero the region
+	as_zero_region(coremap[index].ce_paddr,1);
 
 	return newaddr;
 
