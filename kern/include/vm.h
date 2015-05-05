@@ -125,6 +125,10 @@ extern struct swap_elements *swap_info[SWAP_MAX];
 extern struct lock *swap_lock;
 extern struct lock *swap_file_lock;
 
+extern unsigned int swap_bit;
+extern struct cv *cv_swap;
+
+
 //Global variable for tlb locks --TODO Change this to have just one lock
 extern struct spinlock tlb_lock1;
 extern struct spinlock tlb_lock2;
@@ -158,7 +162,7 @@ void
 evict_coremap_entry(int index);
 
 int
-swapout_change_coremap_entry(int index);
+swapout_change_coremap_entry(int index, vaddr_t *va);
 
 paddr_t
 handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faulttype);
@@ -166,6 +170,16 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 int
 find_swapfile_entry(struct addrspace *as,vaddr_t va);
 
+int
+find_available_page(void);
 
+void
+swapout_page(paddr_t pa,int index);
+
+void
+swapin_page(paddr_t pa,int index);
+
+int
+change_page_entry(int index,vaddr_t *va);
 
 #endif /* _VM_H_ */

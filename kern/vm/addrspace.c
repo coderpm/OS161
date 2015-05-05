@@ -452,103 +452,44 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 }
 
 paddr_t alloc_newPage(struct addrspace *new){
+
 	paddr_t newaddr=0;
+	int index;
+
 	spinlock_acquire(&coremap_lock);
-	int index = alloc_upages();
 
-		//Now decide what to do based on the current page status at the coremap[index]
+	index = find_available_page();
+	//Get the index of the the page which has to be swapped out
+	vaddr_t tlb_vaddr;
+	int swapout_index;
+	swapout_index = change_page_entry(index,&tlb_vaddr);
 
-		if(coremap[index].page_status==0)
-		{
-			//Means the page was free -- NO SWAP OUT OR ANYTHING ELSE REQUIRED
+	//Getting time
+	time_t seconds;
+	uint32_t nanoseconds;
+	gettime(&seconds, &nanoseconds);
 
-			//Zero the region
-			as_zero_region(coremap[index].ce_paddr,1);
+	//Update the coremap entries
+	coremap[index].as=new;
+	coremap[index].chunk_allocated=0;
+	coremap[index].page_status=2;
+	coremap[index].time=seconds+nanoseconds;
 
-			//Getting time
-			time_t seconds;
-			uint32_t nanoseconds;
-			gettime(&seconds, &nanoseconds);
+	newaddr = coremap[index].ce_paddr;
 
-			//Update the coremap entries
-			coremap[index].as=new;
-			coremap[index].chunk_allocated=0;
-			coremap[index].page_status=2;
-			coremap[index].time=seconds+nanoseconds;
+	//Release the coremap lock
+	spinlock_release(&coremap_lock);
 
-			newaddr = coremap[index].ce_paddr;
 
-			//Release the coremap lock
-			spinlock_release(&coremap_lock);
+	if(swapout_index>0)
+	{
+		my_tlb_shhotdown(tlb_vaddr);
+		//Means the existing page needs to be swapped out
+		swapout_page(coremap[index].ce_paddr,swapout_index);
+	}
 
-			return newaddr;
-
-		}
-		else if(coremap[index].page_status==2)
-		{
-			/**
-			 * Means page was dirty -- swap out the previous page to swap file
-			 *  And change entries for the current page
-			 */
-
-			int swap_index;
-			swap_index = swapout_change_coremap_entry(index);
-			lock_acquire(swap_lock);
-				vaddr_t tlb_vaddr= swap_info[swap_index]->va;
-			lock_release(swap_lock);
-
-			//Getting time
-			time_t seconds;
-			uint32_t nanoseconds;
-			gettime(&seconds, &nanoseconds);
-
-			//Update the coremap entries
-			coremap[index].as=new;
-			coremap[index].chunk_allocated=0;
-			coremap[index].page_status=2;
-			coremap[index].time=seconds+nanoseconds;
-
-			newaddr= coremap[index].ce_paddr;
-
-			//Release the coremap lock
-			spinlock_release(&coremap_lock);
-			//Release the page table lock
-
-			my_tlb_shhotdown(tlb_vaddr);
-
-			write_page(coremap[index].ce_paddr,swap_index);
-
-			//Zero the region
-			as_zero_region(coremap[index].ce_paddr,1);
-
-			return newaddr;
-
-		}
-		else if(coremap[index].page_status==3)
-			{
-			//Means the current mapped page was clean -- EVICT the Page
-			evict_coremap_entry(index);
-
-			//Getting time
-			time_t seconds;
-			uint32_t nanoseconds;
-			gettime(&seconds, &nanoseconds);
-
-			//Update the coremap entries
-			coremap[index].as=new;
-			coremap[index].chunk_allocated=0;
-			coremap[index].page_status=2;
-			coremap[index].time=seconds+nanoseconds;
-
-			newaddr = coremap[index].ce_paddr;
-
-			//Zero the region
-			as_zero_region(coremap[index].ce_paddr,1);
-
-			//Release the coremap lock
-			spinlock_release(&coremap_lock);
-			return newaddr;
-		}
+	//Zero the region
+	as_zero_region(coremap[index].ce_paddr,1);
 
 	return newaddr;
 
