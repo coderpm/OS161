@@ -1579,18 +1579,18 @@ write_page(paddr_t pa, int index)
 
 		panic("Not able to open the SWAP FILE");
 	}*/
-	//lock_acquire(swap_file_lock);
+	lock_acquire(swap_file_lock);
 	struct iovec iov;
 	struct uio uio;
 
-	uio_kinit(&iov, &uio, (void*)PADDR_TO_KVADDR(pa), PAGE_SIZE, index*PAGE_SIZE, UIO_WRITE);
+	uio_kinit(&iov, &uio, (void*)PADDR_TO_KVADDR(pa), PAGE_SIZE, (index-1)*PAGE_SIZE, UIO_WRITE);
 
 	result= VOP_WRITE(swapfile_vnode, &uio);
 	if(result){
 		lock_release(swap_file_lock);
 		panic("Not able to write to SWAP FILE");
 	}
-	//lock_release(swap_file_lock);
+	lock_release(swap_file_lock);
 
 }
 
@@ -1608,7 +1608,7 @@ read_page(paddr_t pa, int index)
 
 		panic("Not able to open the SWAP FILE");
 	}*/
-	//lock_acquire(swap_file_lock);
+	lock_acquire(swap_file_lock);
 	struct iovec iov;
 	struct uio uio;
 
@@ -1619,7 +1619,7 @@ read_page(paddr_t pa, int index)
 		lock_release(swap_file_lock);
 		panic("Not able to read from SWAP FILE");
 	}
-	//lock_release(swap_file_lock);
+	lock_release(swap_file_lock);
 }
 
 int
