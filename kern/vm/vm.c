@@ -941,18 +941,32 @@ swapout_page(paddr_t pa,int index)
 {
 	lock_acquire(swap_file_lock);
 
-	while(swap_bit!=0)
+	if(swap_bit!=0)
 	{
-		cv_wait(cv_swap,swap_file_lock);
+		while(swap_bit!=0)
+		{
+			cv_wait(cv_swap,swap_file_lock);
+		}
+
 	}
 
-	//Make the swap_bit =1
-	swap_bit=1;
-	write_page(pa,index);
 
-	cv_signal(cv_swap,swap_file_lock);
+	if(swap_bit==0)
+	{
+		//Make the swap_bit =1
+		swap_bit=1;
 
-	lock_release(swap_file_lock);
+		lock_release(swap_file_lock);
+
+		write_page(pa,index);
+
+		lock_acquire(swap_file_lock);
+
+		//cv_signal(cv_swap,swap_file_lock);
+		cv_broadcast(cv_swap,swap_file_lock);
+
+		lock_release(swap_file_lock);
+	}
 
 }
 
