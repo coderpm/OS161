@@ -458,9 +458,14 @@ paddr_t alloc_newPage(struct addrspace *new){
 	paddr_t newaddr=0;
 	int index;
 
+//	lock_acquire(vm_fault_lock);
 	spinlock_acquire(&coremap_lock);
 
 	index = find_available_page();
+	coremap[index].locked=1;
+
+	spinlock_release(&coremap_lock);
+
 	//Get the index of the the page which has to be swapped out
 	vaddr_t tlb_vaddr;
 	int swapout_index;
@@ -479,10 +484,6 @@ paddr_t alloc_newPage(struct addrspace *new){
 
 	newaddr = coremap[index].ce_paddr;
 
-	//Release the coremap lock
-	spinlock_release(&coremap_lock);
-
-
 	if(swapout_index>0)
 	{
 		my_tlb_shhotdown(tlb_vaddr);
@@ -492,6 +493,10 @@ paddr_t alloc_newPage(struct addrspace *new){
 
 	//Zero the region
 	as_zero_region(coremap[index].ce_paddr,1);
+
+	coremap[index].locked=0;
+
+//	lock_release(vm_fault_lock);
 
 	return newaddr;
 

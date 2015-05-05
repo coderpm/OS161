@@ -101,7 +101,10 @@ struct coremap_entry{
 
 	struct addrspace *as; 	//Stores the address space pointer of the process which is mapped to the coremap entry
 	int chunk_allocated;	//Stores the number of chunk allocated so that it is easy to free
-	int32_t time;
+	unsigned int time;
+
+	//1 means locked and 0 means unlocked
+	unsigned int locked:1;
 };
 
 extern struct coremap_entry *coremap;
@@ -127,6 +130,10 @@ extern struct lock *swap_file_lock;
 
 extern unsigned int swap_bit;
 extern struct cv *cv_swap;
+
+
+extern struct lock *vm_fault_lock;
+
 
 
 //Global variable for tlb locks --TODO Change this to have just one lock

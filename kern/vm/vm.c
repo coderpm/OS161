@@ -81,6 +81,8 @@ struct lock *swap_lock;
 struct vnode *swapfile_vnode;
 struct lock *swap_file_lock;
 
+struct lock *vm_fault_lock;
+
 unsigned int swap_bit; // 0 means No Write , 1 means Yes Write
 struct cv *cv_swap;
 
@@ -108,6 +110,10 @@ vm_bootstrap(void)
 	spinlock_init(&tlb_lock2);
 	spinlock_init(&tlb_lock3);
 	spinlock_init(&tlb_lock4);
+
+	vm_fault_lock = lock_create("vm_fault_lock");
+
+
 	//Get the first and last physical address of RAM
 	ram_getsize(&firstpaddr, &lastpaddr);
 
@@ -152,6 +158,7 @@ vm_bootstrap(void)
 		coremap[i].chunk_allocated=0;
 		coremap[i].as=NULL;
 		coremap[i].time= 0;
+		coremap[i].locked=0;
 	}
 
 
@@ -206,6 +213,13 @@ alloc_kpages(int npages)
 			//Call function to find the available page
 			int index = find_page_available(npages);
 
+
+			coremap[index].locked=1;
+
+			spinlock_release(&coremap_lock);
+
+
+
 			//Check if the page has to be evicted or was it free
 			if(coremap[index].page_status==0)
 			{
@@ -223,8 +237,7 @@ alloc_kpages(int npages)
 				coremap[index].as=curthread->t_addrspace;
 				coremap[index].page_status=1;
 				coremap[index].time= seconds+nanoseconds;
-
-				spinlock_release(&coremap_lock);
+				coremap[index].locked=0;
 
 				return va;
 			}
@@ -234,7 +247,6 @@ alloc_kpages(int npages)
 				 * Meaning that coremap entry at index has to be evicted
 				 * Call function to Find the page table entry marked at address and change the page table present bit to 0
 				 */
-
 
 				//Get the index of the the page which has to be swapped out
 				int swapout_index;
@@ -253,7 +265,6 @@ alloc_kpages(int npages)
 				coremap[index].page_status=1;
 				coremap[index].time= seconds+nanoseconds;
 
-				spinlock_release(&coremap_lock);
 
 				if(swapout_index>0)
 				{
@@ -264,6 +275,7 @@ alloc_kpages(int npages)
 
 				as_zero_region(coremap[index].ce_paddr,npages);
 
+				coremap[index].locked=1;
 				return va;
 
 			}
@@ -359,6 +371,7 @@ free_kpages(vaddr_t addr)
 					coremap[i].as=NULL;
 					coremap[i].chunk_allocated=0;
 					coremap[i].time=0;
+					coremap[i].locked=0;
 				}
 				else{
 					as_zero_region(coremap[i].ce_paddr, chunkzise);
@@ -367,6 +380,7 @@ free_kpages(vaddr_t addr)
 						coremap[j].as=NULL;
 						coremap[j].chunk_allocated=0;
 						coremap[j].time=0;
+						coremap[j].locked=0;
 					}
 				}
 				break;
@@ -402,6 +416,8 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 int
 vm_fault(int faulttype, vaddr_t faultaddress)
 {
+
+	lock_acquire(vm_fault_lock);
 
 	//Variable Declaration
 	struct addrspace *as;
@@ -567,8 +583,9 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	}//End of while checking whether address found for the fault address
 
-
 	KASSERT((paddr & PAGE_FRAME) == paddr);
+
+	lock_release(vm_fault_lock);
 
 //	 Disable interrupts on this CPU while frobbing the TLB.
 	spl = splhigh();
@@ -659,6 +676,12 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 
 			int index;
 			index = find_available_page();
+
+			coremap[index].locked=1;
+
+			spinlock_release(&coremap_lock);
+
+
 			//Get the index of the the page which has to be swapped out
 			vaddr_t tlb_vaddr;
 			swapout_index = change_page_entry(index,&tlb_vaddr);
@@ -669,7 +692,6 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			as->page_table->present=1;
 			as->page_table->va=faultaddr;
 			as->page_table->next=NULL;
-
 
 			//Getting time
 			time_t seconds;
@@ -684,8 +706,6 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 
 			pa = coremap[index].ce_paddr;
 
-			//Release the coremap lock
-			spinlock_release(&coremap_lock);
 			//Release the page table lock
 			lock_release(as->lock_page_table);
 
@@ -700,6 +720,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			//Zero the region
 			as_zero_region(coremap[index].ce_paddr,1);
 
+			coremap[index].locked=0;
 			return pa;
 
 	}
@@ -731,14 +752,14 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 				//Mapping exists - Now check if the present bit for the mapping is true or false
 				if(as->page_table->present == 1)
 				{
+					spinlock_acquire(&coremap_lock);
 
 					//present bit is true -- means it is present in memory
 					pa = as->page_table->pa;
 					int coremap_entry_index;
 					coremap_entry_index = ((pa- coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
-
+					coremap[coremap_entry_index].locked=1;
 					//Take the coremap lock and find an index to map the entry
-			//		spinlock_acquire(&coremap_lock);
 
 					//Change the page status to dirty if faulttype is write
 					switch (faulttype)
@@ -750,9 +771,11 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					//Re-assign back the head
 					as->page_table = head;
 
+					coremap[coremap_entry_index].locked=0;
 
-			//		spinlock_release(&coremap_lock);
+					spinlock_release(&coremap_lock);
 					lock_release(as->lock_page_table);
+
 					return pa;
 
 				}
@@ -764,6 +787,11 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 
 					int index;
 					index = find_available_page();
+
+					coremap[index].locked=1;
+
+					spinlock_release(&coremap_lock);
+
 					//Get the index of the the page which has to be swapped out
 					vaddr_t tlb_vaddr;
 					swapout_index = change_page_entry(index,&tlb_vaddr);
@@ -804,7 +832,6 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					//Re-assign back the head
 					as->page_table = head;
 
-					spinlock_release(&coremap_lock);
 					lock_release(as->lock_page_table);
 					if(swapout_index>0)
 					{
@@ -820,6 +847,8 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 
 					//Swap in the page from the swapfile
 					swapin_page(pa,swapin_index);
+
+					coremap[index].locked=0;
 
 					return pa;
 
@@ -845,6 +874,12 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 
 			int index;
 			index = find_available_page();
+
+			coremap[index].locked=1;
+
+			spinlock_release(&coremap_lock);
+
+
 			//Get the index of the the page which has to be swapped out
 			vaddr_t tlb_vaddr;
 			swapout_index = change_page_entry(index,&tlb_vaddr);
@@ -874,8 +909,6 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			/*add the entry created to the head of the page table list*/
 			as->page_table= entry;
 
-			//Release the coremap lock
-			spinlock_release(&coremap_lock);
 			//Release the page table lock
 			lock_release(as->lock_page_table);
 
@@ -888,6 +921,8 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			}
 			//Zero the region
 			as_zero_region(coremap[index].ce_paddr,1);
+
+			coremap[index].locked=0;
 
 			return pa;
 
@@ -1111,7 +1146,7 @@ find_page_available(int npages)
 			//First check for free pages
 			for(counter=coremap_pages;counter<total_systempages;counter++)
 			{
-				if(coremap[counter].page_status==0)
+				if(coremap[counter].page_status==0 && coremap[counter].locked==0)
 				{
 					//Page is free
 					return_index=counter;
@@ -1159,21 +1194,48 @@ find_oldest_page()
 	int counter=0;
 
 	//Initialize the time and index as the entry for the first system page
-	int index_old=coremap_pages;
-	int32_t time_old=coremap[index_old].time;
+	int index_old=-1;
+	unsigned int time_old=0;
 
+
+	for(counter = 0;counter<total_systempages;counter++)
+	{
+		if(coremap[counter].page_status !=1)
+		{
+			if(coremap[counter].locked==0)
+			{
+				if(index_old == -1)
+				{
+					//Means the first time
+					index_old=counter;
+					time_old=coremap[counter].time;
+					continue;
+				}
+				else
+				{
+					if(time_old>coremap[counter].time)
+					{
+						time_old=coremap[counter].time;
+						index_old=counter;
+					}
+				}
+			}
+		}
+	}
+
+	if(index_old==-1)
+		panic("No INDEX FOUND FOR OLDEST");
+
+
+	return index_old;
 /*
-	int index_clean=0;
-	int32_t time_clean=0;
-*/
-
 	//Run algorithm to over coremap entries
 	for(counter=coremap_pages+1;counter<total_systempages;counter++)
 	{
 		//Check if the page is not kernel page
 		if( (coremap[counter].page_status !=1) )
 		{
-/*
+
 			if(coremap[counter].page_status == 3)
 			{
 				//Meaning page is clean
@@ -1193,7 +1255,7 @@ find_oldest_page()
 					}
 				}
 			}//End of checking page is clean
-*/
+
 
 			//Means page status is not fixed and address space is not same as current thread address space
 			if(time_old>coremap[counter].time)
@@ -1205,12 +1267,13 @@ find_oldest_page()
 		}//End of checking if page is not fixed
 	}
 
-/*
+
 	if(index_clean!=0)
 		return index_clean;
 	else
-*/
+
 		return index_old;
+*/
 }
 
 /**
@@ -1386,6 +1449,7 @@ make_swap_file()
 	int result;
 
 	swap_file_lock= lock_create("swapfile_lock");
+
 	cv_swap = cv_create("swap_file_CV");
 
 	char k_des[NAME_MAX];
@@ -1523,7 +1587,7 @@ find_available_page()
 	{
 		for(counter=coremap_pages;counter<total_systempages;counter++)
 		{
-			if(coremap[counter].page_status==0)
+			if(coremap[counter].page_status==0 && coremap[counter].locked==0)
 			{
 				//Means found the page with status as free
 				index=counter;
