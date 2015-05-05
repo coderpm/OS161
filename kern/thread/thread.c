@@ -1382,3 +1382,15 @@ interprocessor_interrupt(void)
 	curcpu->c_ipi_pending = 0;
 	spinlock_release(&curcpu->c_ipi_lock);
 }
+
+void my_tlb_shhotdown(vaddr_t tlb_vaddr){
+	struct tlbshootdown *tlb_entry= kmalloc(sizeof(struct tlbshootdown));
+	tlb_entry->ts_vaddr= tlb_vaddr;
+	struct cpu *c;
+	for (unsigned int i=0; i < cpuarray_num(&allcpus); i++) {
+		c = cpuarray_get(&allcpus, i);
+		if (c != curcpu->c_self) {
+				ipi_tlbshootdown(c, tlb_entry);
+		}
+	}
+}

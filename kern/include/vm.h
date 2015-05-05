@@ -113,7 +113,7 @@ extern int32_t coremap_pages;
 
 //Global variable for coremap_lock
 extern struct spinlock coremap_lock;
-
+extern struct vnode *swapfile_vnode;
 //Swap index structure and Global variable for accessing the swap_file array and lock
 struct swap_elements
 {
@@ -123,6 +123,7 @@ struct swap_elements
 
 extern struct swap_elements *swap_info[SWAP_MAX];
 extern struct lock *swap_lock;
+extern struct lock *swap_file_lock;
 
 //Global variable for tlb locks --TODO Change this to have just one lock
 extern struct spinlock tlb_lock1;
@@ -156,8 +157,8 @@ find_npages(int npages);
 void
 evict_coremap_entry(int index);
 
-void
-swapout_coremap_entry(int index);
+int
+swapout_change_coremap_entry(int index);
 
 paddr_t
 handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faulttype);

@@ -41,7 +41,7 @@
 #include <current.h>
 #include <mips/tlb.h>
 #include <addrspace.h>
-#include<clock.h>
+#include <clock.h>
 
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -377,8 +377,13 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		//Setting the pointer to the start of the list
 		old->regions= oldregionshead;
 		new->regions= newregionshead;
+		new->heap_end= old->heap_end;
+		new->heap_start= old->heap_start;
+		new->stackbase_base= old->stackbase_base;
+		new->stackbase_top= old->stackbase_top;
 
 		//Coping page table to new address space page table structure
+		//lock_acquire(old->lock_page_table);
 		struct page_table_entry *new_ptentry_head;
 		struct page_table_entry *old_ptentry_head;
 		old_ptentry_head = old->page_table;
@@ -388,13 +393,17 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 				new->page_table=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
 				new_ptentry_head= new->page_table;
 				new->page_table->pa= alloc_newPage(new);
-				memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
+				if(old->page_table->present== 1){
+					memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
 							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
-							PAGE_SIZE);
+								PAGE_SIZE);
+				}else{
+					read_page(old->page_table->pa, old->page_table->swapfile_index);
+				}
 				new->page_table->permissions= old->page_table->permissions;
-				new->page_table->present= old->page_table->present;
+				new->page_table->present= 1;
 				new->page_table->va= old->page_table->va;
-				//new->page_table->swapfile_index=0;
+				new->page_table->swapfile_index=0;
 				old->page_table= old->page_table->next;
 				if(old->page_table!= NULL){
 					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
@@ -406,13 +415,17 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 			}
 			else{
 				new->page_table->pa= alloc_newPage(new);
-				memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
+				if(old->page_table->present== 1){
+						memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
 							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
-							PAGE_SIZE);
+								PAGE_SIZE);
+				}else{
+						read_page(old->page_table->pa, old->page_table->swapfile_index);
+				}
 				new->page_table->permissions= old->page_table->permissions;
-				new->page_table->present= old->page_table->present;
+				new->page_table->present= 1;
 				new->page_table->va= old->page_table->va;
-				//new->page_table->swapfile_index=0;
+				new->page_table->swapfile_index=0;
 				old->page_table= old->page_table->next;
 				if(old->page_table!= NULL){
 					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
@@ -427,12 +440,10 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		//Setting the head to the start of the list
 		old->page_table= old_ptentry_head;
 		new->page_table= new_ptentry_head;
+		//lock_release(old->lock_page_table);
 
 		//Coping rest of the remaining entries in the old structure to new structure
-		new->heap_end= old->heap_end;
-		new->heap_start= old->heap_start;
-		new->stackbase_base= old->stackbase_base;
-		new->stackbase_top= old->stackbase_top;
+
 
 
 		*ret = new;
@@ -443,23 +454,101 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 paddr_t alloc_newPage(struct addrspace *new){
 	paddr_t newaddr=0;
 	spinlock_acquire(&coremap_lock);
-	int index= alloc_upages();
-	//Zero the region
-	as_zero_region(coremap[index].ce_paddr,1);
+	int index = alloc_upages();
 
-	newaddr= coremap[index].ce_paddr;
-	//Getting time
-	time_t seconds;
-	uint32_t nanoseconds;
-	gettime(&seconds, &nanoseconds);
+		//Now decide what to do based on the current page status at the coremap[index]
 
-	//Update the coremap entries
-	coremap[index].as=new;
-	coremap[index].chunk_allocated=0;
-	coremap[index].page_status=2;
-	coremap[index].time=seconds+nanoseconds;
+		if(coremap[index].page_status==0)
+		{
+			//Means the page was free -- NO SWAP OUT OR ANYTHING ELSE REQUIRED
 
-	spinlock_release(&coremap_lock);
+			//Zero the region
+			as_zero_region(coremap[index].ce_paddr,1);
+
+			//Getting time
+			time_t seconds;
+			uint32_t nanoseconds;
+			gettime(&seconds, &nanoseconds);
+
+			//Update the coremap entries
+			coremap[index].as=new;
+			coremap[index].chunk_allocated=0;
+			coremap[index].page_status=2;
+			coremap[index].time=seconds+nanoseconds;
+
+			newaddr = coremap[index].ce_paddr;
+
+			//Release the coremap lock
+			spinlock_release(&coremap_lock);
+
+			return newaddr;
+
+		}
+		else if(coremap[index].page_status==2)
+		{
+			/**
+			 * Means page was dirty -- swap out the previous page to swap file
+			 *  And change entries for the current page
+			 */
+
+			int swap_index;
+			swap_index = swapout_change_coremap_entry(index);
+			lock_acquire(swap_lock);
+				vaddr_t tlb_vaddr= swap_info[swap_index]->va;
+			lock_release(swap_lock);
+
+			//Getting time
+			time_t seconds;
+			uint32_t nanoseconds;
+			gettime(&seconds, &nanoseconds);
+
+			//Update the coremap entries
+			coremap[index].as=new;
+			coremap[index].chunk_allocated=0;
+			coremap[index].page_status=2;
+			coremap[index].time=seconds+nanoseconds;
+
+			newaddr= coremap[index].ce_paddr;
+
+			//Release the coremap lock
+			spinlock_release(&coremap_lock);
+			//Release the page table lock
+
+			my_tlb_shhotdown(tlb_vaddr);
+
+			write_page(coremap[index].ce_paddr,swap_index);
+
+			//Zero the region
+			as_zero_region(coremap[index].ce_paddr,1);
+
+			return newaddr;
+
+		}
+		else if(coremap[index].page_status==3)
+			{
+			//Means the current mapped page was clean -- EVICT the Page
+			evict_coremap_entry(index);
+
+			//Getting time
+			time_t seconds;
+			uint32_t nanoseconds;
+			gettime(&seconds, &nanoseconds);
+
+			//Update the coremap entries
+			coremap[index].as=new;
+			coremap[index].chunk_allocated=0;
+			coremap[index].page_status=2;
+			coremap[index].time=seconds+nanoseconds;
+
+			newaddr = coremap[index].ce_paddr;
+
+			//Zero the region
+			as_zero_region(coremap[index].ce_paddr,1);
+
+			//Release the coremap lock
+			spinlock_release(&coremap_lock);
+			return newaddr;
+		}
 
 	return newaddr;
 

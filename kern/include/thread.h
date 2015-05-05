@@ -185,5 +185,7 @@ void schedule(void);
  */
 void thread_consider_migration(void);
 
+//Added by Mohit
+void my_tlb_shhotdown(vaddr_t tlb_vaddr);
 
 #endif /* _THREAD_H_ */
