@@ -227,6 +227,7 @@ alloc_kpages(int npages)
 
 				spinlock_release(&coremap_lock);
 
+				return va;
 			}
 			else
 			{
@@ -260,11 +261,12 @@ alloc_kpages(int npages)
 
 					my_tlb_shhotdown(tlb_vaddr);
 					//Means the existing page needs to be swapped out
-					swapout_page(coremap[index].ce_paddr,swapout_index);
+					swapout_page(pa,swapout_index);
 
 				}
 				as_zero_region(coremap[index].ce_paddr,npages);
 
+				return va;
 
 
 			}
@@ -272,12 +274,14 @@ alloc_kpages(int npages)
 		}
 		else if(npages >1)
 		{
+			panic("CHANGE PAGE ENTRY DOES NOT WORK HERE IN NPAGES>1");
 			spinlock_acquire(&coremap_lock);
 			int index = find_page_available(npages);
 			if(index<0)
 				pa=0;
 			else
 			{
+
 				//Meaning pages found to replace
 				//As the pages are contiguous -- Iterate over them and change page entries one by one
 				for(int i =index;i<index+npages;i++)
@@ -285,7 +289,7 @@ alloc_kpages(int npages)
 					//Take the page table lock
 					lock_acquire(coremap[index].as->lock_page_table);
 
-					panic("CHANGE PAGE ENTRY DOES NOT WORK HERE IN NPAGES>1");
+
 					//TODO:: CHNAGE THIS
 //					change_page_entry(i);
 
@@ -614,7 +618,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	}
 
 
-	kprintf("dumbvm: Ran out of TLB entries - cannot handle page fault\n");
+	kprintf("MY vm: Ran out of TLB entries - cannot handle page fault\n");
 		splx(spl);
 		return EFAULT;
 
@@ -692,7 +696,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			{
 				my_tlb_shhotdown(tlb_vaddr);
 				//Means the existing page needs to be swapped out
-				swapout_page(coremap[index].ce_paddr,swapout_index);
+				swapout_page(pa,swapout_index);
 
 			}
 
@@ -737,7 +741,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					coremap_entry_index = ((pa- coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
 
 					//Take the coremap lock and find an index to map the entry
-					spinlock_acquire(&coremap_lock);
+			//		spinlock_acquire(&coremap_lock);
 
 					//Change the page status to dirty if faulttype is write
 					switch (faulttype)
@@ -750,7 +754,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					as->page_table = head;
 
 
-					spinlock_release(&coremap_lock);
+			//		spinlock_release(&coremap_lock);
 					lock_release(as->lock_page_table);
 					return pa;
 
@@ -810,7 +814,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 
 						my_tlb_shhotdown(tlb_vaddr);
 						//Means the existing page needs to be swapped out
-						swapout_page(coremap[index].ce_paddr,swapout_index);
+						swapout_page(pa,swapout_index);
 
 					}
 
@@ -882,7 +886,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			{
 				my_tlb_shhotdown(tlb_vaddr);
 				//Means the existing page needs to be swapped out
-				swapout_page(coremap[index].ce_paddr,swapout_index);
+				swapout_page(pa,swapout_index);
 
 			}
 			//Zero the region
@@ -962,8 +966,11 @@ swapout_page(paddr_t pa,int index)
 
 		lock_acquire(swap_file_lock);
 
-		//cv_signal(cv_swap,swap_file_lock);
-		cv_broadcast(cv_swap,swap_file_lock);
+		swap_bit=0;
+
+		cv_signal(cv_swap,swap_file_lock);
+		//cv_broadcast(cv_swap,swap_file_lock);
+
 
 		lock_release(swap_file_lock);
 	}
@@ -1343,6 +1350,7 @@ write_page(paddr_t pa, int index)
 
 	//struct vnode *v;
 	int result;
+
 		/*panic("Not able to open the SWAP FILE");*/
 
 	struct iovec iov;
@@ -1352,7 +1360,6 @@ write_page(paddr_t pa, int index)
 
 	result= VOP_WRITE(swapfile_vnode, &uio);
 	if(result){
-		lock_release(swap_file_lock);
 		panic("Not able to write to SWAP FILE");
 	}
 
@@ -1367,11 +1374,6 @@ read_page(paddr_t pa, int index)
 
 	//struct vnode *v;
 	int result;
-	/*result = vfs_open(k_des,O_RDWR , 0, &v);
-	if (result) {
-
-		panic("Not able to open the SWAP FILE");
-	}*/
 
 	struct iovec iov;
 	struct uio uio;
@@ -1380,7 +1382,6 @@ read_page(paddr_t pa, int index)
 
 	result= VOP_READ(swapfile_vnode, &uio);
 	if(result){
-		lock_release(swap_file_lock);
 		panic("Not able to read from SWAP FILE");
 	}
 }

@@ -485,7 +485,7 @@ paddr_t alloc_newPage(struct addrspace *new){
 	{
 		my_tlb_shhotdown(tlb_vaddr);
 		//Means the existing page needs to be swapped out
-		swapout_page(coremap[index].ce_paddr,swapout_index);
+		swapout_page(newaddr,swapout_index);
 	}
 
 	//Zero the region
