@@ -392,19 +392,27 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 			if(count_pt==0){
 				new->page_table=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
 				new_ptentry_head= new->page_table;
-				new->page_table->pa= alloc_newPage(new);
 				if(old->page_table->present== 1){
+					int coremap_entry_index;
+					coremap_entry_index = ((old->page_table->pa- coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+					coremap[coremap_entry_index].locked=1;
+					new->page_table->pa= alloc_newPage(new);
 					memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
 							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
 								PAGE_SIZE);
+					coremap[coremap_entry_index].locked=0;
 				}else{
-					swapin_page(old->page_table->pa, old->page_table->swapfile_index);
+					new->page_table->pa= alloc_newPage(new);
+					swapin_page(new->page_table->pa, old->page_table->swapfile_index);
 //					read_page(old->page_table->pa, old->page_table->swapfile_index);
 				}
+				int coremap_entry_index_new;
+				coremap_entry_index_new = ((new->page_table->pa- coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
 				new->page_table->permissions= old->page_table->permissions;
 				new->page_table->present= 1;
 				new->page_table->va= old->page_table->va;
 				new->page_table->swapfile_index=0;
+				coremap[coremap_entry_index_new].locked=0;
 				old->page_table= old->page_table->next;
 				if(old->page_table!= NULL){
 					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
@@ -415,19 +423,28 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 				}
 			}
 			else{
-				new->page_table->pa= alloc_newPage(new);
+
 				if(old->page_table->present== 1){
+					int coremap_entry_index;
+					coremap_entry_index = ((old->page_table->pa- coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+					coremap[coremap_entry_index].locked=1;
+					new->page_table->pa= alloc_newPage(new);
 						memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
 							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
 								PAGE_SIZE);
+					coremap[coremap_entry_index].locked=0;
 				}else{
-					swapin_page(old->page_table->pa, old->page_table->swapfile_index);
+					new->page_table->pa= alloc_newPage(new);
+					swapin_page(new->page_table->pa, old->page_table->swapfile_index);
 //					read_page(old->page_table->pa, old->page_table->swapfile_index);
 				}
+				int coremap_entry_index_new;
+				coremap_entry_index_new = ((new->page_table->pa- coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
 				new->page_table->permissions= old->page_table->permissions;
 				new->page_table->present= 1;
 				new->page_table->va= old->page_table->va;
 				new->page_table->swapfile_index=0;
+				coremap[coremap_entry_index_new].locked=0;
 				old->page_table= old->page_table->next;
 				if(old->page_table!= NULL){
 					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
@@ -458,18 +475,22 @@ paddr_t alloc_newPage(struct addrspace *new){
 	paddr_t newaddr=0;
 	int index;
 
-//	lock_acquire(vm_fault_lock);
+	lock_acquire(vm_fault_lock);
+
+
+	//Take the coremap lock and find an index to map the entry
 	spinlock_acquire(&coremap_lock);
 
 	index = find_available_page();
+
 	coremap[index].locked=1;
 
 	spinlock_release(&coremap_lock);
 
-	//Get the index of the the page which has to be swapped out
-	vaddr_t tlb_vaddr;
-	int swapout_index;
-	swapout_index = change_page_entry(index,&tlb_vaddr);
+	//Call change coremap page entry in order to make the page available for you
+	change_coremap_page_entry(index);
+
+	//Now that particular entry at coremap[index] is free for you
 
 	//Getting time
 	time_t seconds;
@@ -484,19 +505,12 @@ paddr_t alloc_newPage(struct addrspace *new){
 
 	newaddr = coremap[index].ce_paddr;
 
-	if(swapout_index>0)
-	{
-		my_tlb_shhotdown(tlb_vaddr);
-		//Means the existing page needs to be swapped out
-		swapout_page(newaddr,swapout_index);
-	}
-
 	//Zero the region
 	as_zero_region(coremap[index].ce_paddr,1);
 
 	coremap[index].locked=0;
 
-//	lock_release(vm_fault_lock);
+	lock_release(vm_fault_lock);
 
 	return newaddr;
 

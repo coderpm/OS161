@@ -180,13 +180,19 @@ find_swapfile_entry(struct addrspace *as,vaddr_t va);
 int
 find_available_page(void);
 
-void
-swapout_page(paddr_t pa,int index);
 
 void
 swapin_page(paddr_t pa,int index);
 
 int
 change_page_entry(int index,vaddr_t *va);
+
+void
+change_coremap_page_entry(int index);
+
+void
+swapout_page(int index);
+
+
 
 #endif /* _VM_H_ */
