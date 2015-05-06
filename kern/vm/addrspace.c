@@ -501,7 +501,7 @@ paddr_t alloc_newPage(struct addrspace *new){
 	coremap[index].as=new;
 	coremap[index].chunk_allocated=0;
 	coremap[index].page_status=2;
-	coremap[index].time=seconds+nanoseconds;
+	coremap[index].time=seconds;
 
 	newaddr = coremap[index].ce_paddr;
 

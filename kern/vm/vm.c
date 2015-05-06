@@ -237,7 +237,7 @@ alloc_kpages(int npages)
 				coremap[index].chunk_allocated=1;
 				coremap[index].as=curthread->t_addrspace;
 				coremap[index].page_status=1;
-				coremap[index].time= seconds+nanoseconds;
+				coremap[index].time= seconds;
 				coremap[index].locked=0;
 
 				return va;
@@ -261,7 +261,7 @@ alloc_kpages(int npages)
 				coremap[index].chunk_allocated=1;
 				coremap[index].as=curthread->t_addrspace;
 				coremap[index].page_status=1;
-				coremap[index].time= seconds+nanoseconds;
+				coremap[index].time= seconds;
 
 
 
@@ -308,7 +308,7 @@ alloc_kpages(int npages)
 					coremap[i].page_status=1;
 					coremap[i].chunk_allocated=0;
 					coremap[i].as=curthread->t_addrspace;
-					coremap[index].time= seconds+nanoseconds;
+					coremap[index].time= seconds;
 				}
 
 				coremap[index].chunk_allocated=npages;
@@ -801,7 +801,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			coremap[index].as=as;
 			coremap[index].chunk_allocated=0;
 			coremap[index].page_status=2;
-			coremap[index].time=seconds+nanoseconds;
+			coremap[index].time=seconds;
 
 			pa = coremap[index].ce_paddr;
 
@@ -898,7 +898,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					//Update the coremap entries
 					coremap[index].as=as;
 					coremap[index].chunk_allocated=0;
-					coremap[index].time=seconds+nanoseconds;
+					coremap[index].time=seconds;
 
 					pa = coremap[index].ce_paddr;
 
@@ -976,7 +976,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			coremap[index].as=as;
 			coremap[index].chunk_allocated=0;
 			coremap[index].page_status=2;
-			coremap[index].time=seconds+nanoseconds;
+			coremap[index].time=seconds;
 
 			pa = coremap[index].ce_paddr;
 
