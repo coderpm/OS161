@@ -377,7 +377,55 @@ find_page_available(int npages)
 
 	}//End of else if checking whether the number of pages requested is more than 1
 
+	if(return_index == -1)
+		panic("Wrong index returned in find_page_available");
+
 	return return_index;
+}
+
+/**
+ * Function to find available page entry to map the page va
+ */
+
+int
+find_available_page()
+{
+	int counter=0;
+	int index=-1;
+	bool page_found=false;
+
+
+	while(!(page_found))
+	{
+		for(counter=coremap_pages;counter<total_systempages;counter++)
+		{
+			if(coremap[counter].page_status==0 && coremap[counter].locked==0)
+			{
+				//Means found the page with status as free
+				index=counter;
+				page_found=true;
+
+				break;
+			}
+		}
+
+		/**
+		 * Means no page found which is free --
+		 * FIND To be EVICTED PAGE - Call find_oldest_page to find the (oldest and clean page) or (just the oldest)in the coremap
+		 */
+
+		if(!(page_found))
+		{
+			index = find_oldest_page();
+			page_found = true;
+		}
+
+	}//End of while loop in page_found
+
+	if(index==-1)
+		panic("Index returning as -1 in find_page_available");
+	return index;
+
 }
 
 /**
@@ -436,9 +484,28 @@ find_oldest_page()
 void
 page_free(paddr_t paddr){
 	spinlock_acquire(&coremap_lock);
+
+	struct page_table_entry *old;
+	old = curthread->t_addrspace->page_table;
+
+	while(curthread->t_addrspace->page_table != NULL)
+	{
+		int ind;
+		ind = ((curthread->t_addrspace->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+
+		if(coremap[ind].as != curthread->t_addrspace)
+			panic("ADDRESS SPACE DO NOT MATCH IN  before page free");
+
+		curthread->t_addrspace->page_table = curthread->t_addrspace->page_table->next;
+	}
+
+	curthread->t_addrspace->page_table = old;
+
 	int coremap_entry= ((paddr- coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
-	as_zero_region(coremap[coremap_entry].ce_paddr,coremap[coremap_entry].chunk_allocated);
-	if(coremap[coremap_entry].chunk_allocated==0){
+	as_zero_region(coremap[coremap_entry].ce_paddr,1);
+
+	if(coremap[coremap_entry].chunk_allocated==0)
+	{
 		coremap[coremap_entry].page_status=0;
 		coremap[coremap_entry].time=0;
 		coremap[coremap_entry].as=NULL;
@@ -456,6 +523,24 @@ page_free(paddr_t paddr){
 	}
 
 	spinlock_release(&coremap_lock);
+
+	old = curthread->t_addrspace->page_table;
+
+	while(curthread->t_addrspace->page_table != NULL)
+	{
+		int ind;
+		ind = ((curthread->t_addrspace->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+
+		if(coremap[ind].as != curthread->t_addrspace)
+			panic("ADDRESS SPACE DO NOT MATCH IN after page free");
+
+
+
+		curthread->t_addrspace->page_table = curthread->t_addrspace->page_table->next;
+	}
+
+	curthread->t_addrspace->page_table = old;
+
 }
 
 
@@ -1076,48 +1161,6 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 	return pa;
 }
 
-/**
- * Function to find available page entry to map the page va
- */
-
-int
-find_available_page()
-{
-	int counter=0;
-	int index=-1;
-	bool page_found=false;
-
-
-	while(!(page_found))
-	{
-		for(counter=coremap_pages;counter<total_systempages;counter++)
-		{
-			if(coremap[counter].page_status==0 && coremap[counter].locked==0)
-			{
-				//Means found the page with status as free
-				index=counter;
-				page_found=true;
-
-				break;
-			}
-		}
-
-		/**
-		 * Means no page found which is free --
-		 * FIND To be EVICTED PAGE - Call find_oldest_page to find the (oldest and clean page) or (just the oldest)in the coremap
-		 */
-
-		if(!(page_found))
-		{
-			index = find_oldest_page();
-			page_found = true;
-		}
-
-	}//End of while loop in page_found
-
-	return index;
-
-}
 
 
 /*
@@ -1127,6 +1170,7 @@ void
 change_coremap_page_entry(int index)
 {
 	//Now decide what to do based on the current page status at the coremap[index]
+
 
 	if(coremap[index].page_status==0)
 	{
@@ -1199,10 +1243,6 @@ swapout_page(int index)
 	struct addrspace *as;
 	as = coremap[index].as;
 
-
-
-
-
 	paddr_t pa = coremap[index].ce_paddr;
 	vaddr_t tlb_vaddr;
 
@@ -1234,9 +1274,7 @@ swapout_page(int index)
 		}
 
 	struct page_table_entry *oldhead;
-
 	oldhead = coremap[index].as->page_table;
-
 	while(coremap[index].as->page_table!=NULL)
 	{
 		int ind;
@@ -1296,6 +1334,8 @@ find_swapfile_entry(struct addrspace *as,vaddr_t va)
 
 	lock_release(swap_lock);
 
+	if(index==-1)
+		panic("INDEX WRONG in FINDING SWAPFILE ENTRY");
 	return index;
 }
 void
