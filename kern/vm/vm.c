@@ -501,19 +501,19 @@ page_free(paddr_t paddr){
 
 	curthread->t_addrspace->page_table = old;
 
-	int coremap_entry= ((paddr- coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
-	as_zero_region(coremap[coremap_entry].ce_paddr,1);
+	int coremap_entr= (( paddr- coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+	as_zero_region(coremap[coremap_entr].ce_paddr,1);
 
-	if(coremap[coremap_entry].chunk_allocated==0)
+	if(coremap[coremap_entr].chunk_allocated==0)
 	{
-		coremap[coremap_entry].page_status=0;
-		coremap[coremap_entry].time=0;
-		coremap[coremap_entry].as=NULL;
-		coremap[coremap_entry].chunk_allocated=0;
-		coremap[coremap_entry].locked=0;
+		coremap[coremap_entr].page_status=0;
+		coremap[coremap_entr].time=0;
+		coremap[coremap_entr].as=NULL;
+		coremap[coremap_entr].chunk_allocated=0;
+		coremap[coremap_entr].locked=0;
 	}
 	else{
-		for(int j=0; j< coremap[coremap_entry].chunk_allocated; j++){
+		for(int j=0; j< coremap[coremap_entr].chunk_allocated; j++){
 			coremap[j].page_status=0;
 			coremap[j].time=0;
 			coremap[j].as=NULL;
@@ -524,7 +524,7 @@ page_free(paddr_t paddr){
 
 	spinlock_release(&coremap_lock);
 
-	old = curthread->t_addrspace->page_table;
+	/*old = curthread->t_addrspace->page_table;
 
 	while(curthread->t_addrspace->page_table != NULL)
 	{
@@ -540,7 +540,7 @@ page_free(paddr_t paddr){
 	}
 
 	curthread->t_addrspace->page_table = old;
-
+*/
 }
 
 
@@ -806,8 +806,12 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		int ind;
 		ind = ((as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
 
-		if(coremap[ind].as != as)
-			panic("ADDRESS SPACE DO NOT MATCH IN AFTER VM_FAULT");
+		if(as->page_table->present==1)
+		{
+			if(coremap[ind].as != as)
+				panic("ADDRESS SPACE DO NOT MATCH IN AFTER VM_FAULT");
+
+		}
 
 		coremap[ind].locked=1;
 		as->page_table = as->page_table->next;
@@ -984,9 +988,11 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 						int ind;
 						ind = ((as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
 
-						if(coremap[ind].as != as)
-							panic("ADDRESS SPACE DO NOT MATCH IN AFTER Handle ADDRESS if present==1");
-
+						if(as->page_table->present==1)
+						{
+							if(coremap[ind].as != as)
+								panic("ADDRESS SPACE DO NOT MATCH IN AFTER Handle ADDRESS if present==1");
+						}
 
 						as->page_table = as->page_table->next;
 					}
@@ -1066,8 +1072,12 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 						int ind;
 						ind = ((as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
 
-						if(coremap[ind].as != as)
-							panic("ADDRESS SPACE DO NOT MATCH IN AFTER Handle ADDRESS if present==0");
+						if(as->page_table->present==1)
+						{
+							if(coremap[ind].as != as)
+								panic("ADDRESS SPACE DO NOT MATCH IN AFTER Handle ADDRESS if present==0");
+
+						}
 
 						as->page_table = as->page_table->next;
 
@@ -1144,8 +1154,11 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 				int ind;
 				ind = ((as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
 
-				if(coremap[ind].as != as)
-					panic("ADDRESS SPACE DO NOT MATCH IN AFTER Handle ADDRESS if pa == 0");
+				if(as->page_table->present==1)
+				{
+					if(coremap[ind].as != as)
+						panic("ADDRESS SPACE DO NOT MATCH IN AFTER Handle ADDRESS if pa == 0");
+				}
 
 				as->page_table = as->page_table->next;
 
@@ -1189,6 +1202,27 @@ change_coremap_page_entry(int index)
 		* Meaning that the page is dirty --Give a call to find swapindex of the page at coremap[index]
 		* Call function to swapout the page at the index
 		*/
+		struct page_table_entry *oldhead;
+		struct addrspace *as;
+		as = coremap[index].as;
+		oldhead = coremap[index].as->page_table;
+		while(coremap[index].as->page_table!=NULL)
+		{
+			int ind;
+			ind = ((coremap[index].as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+
+			if(coremap[index].as->page_table->present==1)
+			{
+				if(coremap[ind].as != as)
+						panic("ADDRESS SPACE DO NOT MATCH before sending to SWAPOUT");
+
+			}
+
+					coremap[index].as->page_table = coremap[index].as->page_table->next;
+			}
+			as->page_table=oldhead;
+
+
 		swapout_page(index);
 	}
 
@@ -1280,8 +1314,12 @@ swapout_page(int index)
 		int ind;
 		ind = ((coremap[index].as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
 
-		if(coremap[ind].as != as)
-			panic("ADDRESS SPACE DO NOT MATCH IN AFTER SWAPOUT");
+		if(coremap[index].as->page_table->present ==1)
+		{
+			if(coremap[ind].as != as)
+				panic("ADDRESS SPACE DO NOT MATCH IN AFTER SWAPOUT");
+
+		}
 
 			coremap[index].as->page_table = coremap[index].as->page_table->next;
 	}
