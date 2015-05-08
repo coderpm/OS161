@@ -161,6 +161,11 @@ vm_bootstrap(void)
 		coremap[i].locked=0;
 	}
 
+	/*for(int i=num_coremapPages;i<total_page_num;i++)
+	{
+		kprintf("COremap index %d with pa %d \n",i,coremap[i].ce_paddr);
+	}
+*/
 
 	/*
 	 * Setting the value for coremap_initialized to be 1
@@ -519,6 +524,10 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 {
 
 	lock_acquire(vm_fault_lock);
+	//curthread->t_in_interrupt=false;
+
+
+
 
 	//Variable Declaration
 	struct addrspace *as;
@@ -704,19 +713,28 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	coremap[coremap_entry_index].locked=0;
 
+	struct page_table_entry *oldhead;
+	oldhead = as->page_table;
+
+	while(as->page_table!=NULL)
+	{
+		int ind;
+		ind = ((as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+
+		if(coremap[ind].as != as)
+			panic("ADDRESS SPACE DO NOT MATCH IN AFTER VM_FAULT");
+
+		coremap[ind].locked=1;
+		as->page_table = as->page_table->next;
+	}
+
+	as->page_table=oldhead;
+
 
 	lock_release(vm_fault_lock);
 
-//	 Disable interrupts on this CPU while frobbing the TLB.
+
 	spl = splhigh();
-	ehi = faultaddress;
-	elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
-
-	tlb_random(ehi,elo);
-
-	splx(spl);
-	return 0;
-
 
 	for (i=0; i<NUM_TLB; i++)
 	{
@@ -733,6 +751,17 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		splx(spl);
 		return 0;
 	}
+
+//	 Disable interrupts on this CPU while frobbing the TLB.
+	ehi = faultaddress;
+	elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
+
+	tlb_random(ehi,elo);
+
+	splx(spl);
+	return 0;
+
+
 
 
 	kprintf("MY vm: Ran out of TLB entries - cannot handle page fault\n");
@@ -862,6 +891,24 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 
 					spinlock_release(&coremap_lock);
 
+					struct page_table_entry *oldhead;
+					oldhead = as->page_table;
+
+					while(as->page_table!=NULL)
+					{
+						int ind;
+						ind = ((as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+
+						if(coremap[ind].as != as)
+							panic("ADDRESS SPACE DO NOT MATCH IN AFTER Handle ADDRESS if present==1");
+
+
+						as->page_table = as->page_table->next;
+					}
+
+					as->page_table=oldhead;
+
+
 					return pa;
 
 				}
@@ -926,6 +973,24 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					//Swap in the page from the swapfile
 					swapin_page(pa,swapin_index);
 
+					struct page_table_entry *oldhead;
+					oldhead = as->page_table;
+
+					while(as->page_table!=NULL)
+					{
+						int ind;
+						ind = ((as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+
+						if(coremap[ind].as != as)
+							panic("ADDRESS SPACE DO NOT MATCH IN AFTER Handle ADDRESS if present==0");
+
+						as->page_table = as->page_table->next;
+
+					}
+					as->page_table=oldhead;
+
+
+
 					return pa;
 
 				}
@@ -986,7 +1051,21 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			//Zero the region
 			as_zero_region(coremap[index].ce_paddr,1);
 
-			coremap[index].locked=0;
+			struct page_table_entry *oldhead;
+			oldhead = as->page_table;
+
+			while(as->page_table!=NULL)
+			{
+				int ind;
+				ind = ((as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+
+				if(coremap[ind].as != as)
+					panic("ADDRESS SPACE DO NOT MATCH IN AFTER Handle ADDRESS if pa == 0");
+
+				as->page_table = as->page_table->next;
+
+			}
+			as->page_table=oldhead;
 
 			return pa;
 
@@ -1082,6 +1161,7 @@ change_coremap_page_entry(int index)
 void
 evict_coremap_entry(int index)
 {
+	int flag=-1;
 	struct page_table_entry *head;
 
 	if(coremap[index].as!=NULL)
@@ -1095,6 +1175,7 @@ evict_coremap_entry(int index)
 			{
 				//Entry found where pa has been mapped -- Change to 0
 				coremap[index].as->page_table->present=0;
+				flag=1;
 				break;
 			}
 
@@ -1103,6 +1184,8 @@ evict_coremap_entry(int index)
 		}
 		coremap[index].as->page_table = head;
 	}
+	if(flag==-1)
+		panic("Problem in evict");
 }
 
 /*
@@ -1112,14 +1195,13 @@ evict_coremap_entry(int index)
 void
 swapout_page(int index)
 {
-	//take the coremap lock
-/*
-	spinlock_acquire(&coremap_lock);
 
-	coremap[index].locked=1;
+	struct addrspace *as;
+	as = coremap[index].as;
 
-	spinlock_release(&coremap_lock);
-*/
+
+
+
 
 	paddr_t pa = coremap[index].ce_paddr;
 	vaddr_t tlb_vaddr;
@@ -1151,6 +1233,22 @@ swapout_page(int index)
 			coremap[index].as->page_table = head;
 		}
 
+	struct page_table_entry *oldhead;
+
+	oldhead = coremap[index].as->page_table;
+
+	while(coremap[index].as->page_table!=NULL)
+	{
+		int ind;
+		ind = ((coremap[index].as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+
+		if(coremap[ind].as != as)
+			panic("ADDRESS SPACE DO NOT MATCH IN AFTER SWAPOUT");
+
+			coremap[index].as->page_table = coremap[index].as->page_table->next;
+	}
+	as->page_table=oldhead;
+
 	my_tlb_shhotdown(tlb_vaddr);
 	//Means the existing page needs to be swapped out
 
@@ -1166,7 +1264,7 @@ find_swapfile_entry(struct addrspace *as,vaddr_t va)
 	int index=-1;
 
 	//Take swapfile lock
-	//lock_acquire(swap_lock);
+	lock_acquire(swap_lock);
 
 
 	//Scan the swapfile array
@@ -1180,6 +1278,7 @@ find_swapfile_entry(struct addrspace *as,vaddr_t va)
 			break;
 		}
 	}
+
 	if(index==-1)
 	{
 		//Means no entry found -- Allocate an entry for the same
@@ -1195,7 +1294,7 @@ find_swapfile_entry(struct addrspace *as,vaddr_t va)
 		}
 	}
 
-//	lock_release(swap_lock);
+	lock_release(swap_lock);
 
 	return index;
 }
