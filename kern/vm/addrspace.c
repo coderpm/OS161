@@ -88,13 +88,12 @@ as_destroy(struct addrspace *as)
 		}
 		struct page_table_entry *next_page= as->page_table;
 		while(as->page_table!= NULL){
+			lock_acquire(as->lock_page_table);
 			next_page = as->page_table->next;
 			if(as->page_table->present==0){
 				//Acquiring lock for swap array
-				if(as->page_table->swapfile_index<1)
-					panic("IN AS_DESTROY -- WRONG SWAPINDEX HAD BEEN ASSIGNED");
 
-				swap_info[as->page_table->swapfile_index]->va= 0;
+					swap_info[as->page_table->swapfile_index]->va= 0;
 
 			}
 			else{
@@ -104,6 +103,7 @@ as_destroy(struct addrspace *as)
 			as->page_table->present=0;
 			as->page_table->va=0;
 			as->page_table->swapfile_index=0;
+			lock_release(as->lock_page_table);
 			kfree(as->page_table);
 			as->page_table= next_page;
 		}
@@ -390,39 +390,12 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		new->heap_start= old->heap_start;
 		new->stackbase_base= old->stackbase_base;
 		new->stackbase_top= old->stackbase_top;
-
-		//Coping page table to new address space page table structure
-		//lock_acquire(old->lock_page_table);
-//		struct page_table_entry *new_ptentry_head;
-//		int count_pt= 0;
-
-
 /*
 		//Call copy function to copy the link list from old to new pagetable
 		pagetable_copy(old->page_table,&new->page_table,new);
-
-
-
 		*ret = new;
 		return 0;
 */
-		struct page_table_entry *oldhead;
-		oldhead = old->page_table;
-
-		while(old->page_table!=NULL)
-		{
-			int ind;
-			ind = ((old->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
-
-			if(coremap[ind].as != old)
-				panic("ADDRESS SPACE DO NOT MATCH IN AS COPY before");
-
-			coremap[ind].locked=1;
-			old->page_table = old->page_table->next;
-		}
-
-		old->page_table=oldhead;
-
 
 		//Setting the pointer to the start of the list
 		old->regions= oldregionshead;
@@ -433,62 +406,89 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		new->stackbase_top= old->stackbase_top;
 
 		//Coping page table to new address space page table structure
-		//lock_acquire(old->lock_page_table);
 		struct page_table_entry *new_ptentry_head;
 		struct page_table_entry *old_ptentry_head;
 		old_ptentry_head = old->page_table;
 		int count_pt= 0;
-		while(old->page_table != NULL){
+		while(old->page_table != NULL)
+		{
+			int ind = ((old->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+			coremap[ind].locked=1;
+			int new_index;
 			if(count_pt==0)
 			{
+
 				new->page_table=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
 				new_ptentry_head= new->page_table;
-				new->page_table->pa= alloc_newPage(new);
-				if(old->page_table->present== 1){
-					memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
-							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
-								PAGE_SIZE);
-				}else{
-					swapin_page(old->page_table->pa, old->page_table->swapfile_index);
-//					read_page(old->page_table->pa, old->page_table->swapfile_index);
+				new->page_table->pa= alloc_newPage(new,&new_index);
+
+				if(old->page_table->present== 1)
+				{
+					if(coremap[ind].as!=old)
+						panic("Old Address table does not match with coremap entry");
+
+					memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),(const void *)PADDR_TO_KVADDR(old->page_table->pa),PAGE_SIZE);
 				}
+				else
+				{
+					swapin_page(old->page_table->pa, old->page_table->swapfile_index);
+				}
+
 				new->page_table->permissions= old->page_table->permissions;
 				new->page_table->present= 1;
 				new->page_table->va= old->page_table->va;
 				new->page_table->swapfile_index=0;
+
+				coremap[ind].locked=0;
 				old->page_table= old->page_table->next;
-				if(old->page_table!= NULL){
+
+				if(old->page_table!= NULL)
+				{
 					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
 					new->page_table= new->page_table->next;
 				}
-				else{
+				else
+				{
 					new->page_table->next= NULL;
 				}
+				coremap[ind].locked=0;
+				coremap[new_index].locked=0;
 			}
-			else{
-				new->page_table->pa= alloc_newPage(new);
-				if(old->page_table->present== 1){
-						memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
-							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
-								PAGE_SIZE);
-				}else{
+			else
+			{
+				new->page_table->pa= alloc_newPage(new,&new_index);
+
+				if(old->page_table->present== 1)
+				{
+					memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),(const void *)PADDR_TO_KVADDR(old->page_table->pa),PAGE_SIZE);
+				}
+				else
+				{
 					swapin_page(old->page_table->pa, old->page_table->swapfile_index);
 				}
+
 				new->page_table->permissions= old->page_table->permissions;
 				new->page_table->present= 1;
 				new->page_table->va= old->page_table->va;
 				new->page_table->swapfile_index=0;
+
 				old->page_table= old->page_table->next;
-				if(old->page_table!= NULL){
+
+				if(old->page_table!= NULL)
+				{
 					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
 					new->page_table= new->page_table->next;
 				}
-				else{
+				else
+				{
 					new->page_table->next= NULL;
 				}
+				coremap[ind].locked=0;
+				coremap[new_index].locked=0;
 			}
 			count_pt++;
 		}
+
 		//Setting the head to the start of the list
 		old->page_table= old_ptentry_head;
 		new->page_table= new_ptentry_head;
@@ -497,38 +497,32 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		//Coping rest of the remaining entries in the old structure to new structure
 
 
-		oldhead = old->page_table;
-
+		struct page_table_entry *head;
+		head = old->page_table;
 		while(old->page_table!=NULL)
 		{
 			int ind;
 			ind = ((old->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
 
-			if(coremap[ind].as != old)
-				panic("ADDRESS SPACE DO NOT MATCH IN AS COPY");
-
 			coremap[ind].locked=0;
-			old->page_table = old->page_table->next;
+
+			old->page_table=  old->page_table->next;
 		}
+		old->page_table= head;
 
-		old->page_table=oldhead;
-
-
-
-		struct page_table_entry *newhead;
-		newhead = new->page_table;
+		struct page_table_entry *nh;
+		nh = new->page_table;
 		while(new->page_table!=NULL)
 		{
 			int ind;
 			ind = ((new->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
 
-			if(coremap[ind].as != new)
-				panic("ADDRESS SPACE DO NOT MATCH IN AS COPY");
+			coremap[ind].locked=0;
 
-			new->page_table = new->page_table->next;
+			new->page_table=  new->page_table->next;
+
 		}
-		new->page_table=newhead;
-
+		new->page_table= nh;
 
 
 
@@ -540,10 +534,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 }
 
 
-
-
-
-paddr_t alloc_newPage(struct addrspace *new)
+paddr_t alloc_newPage(struct addrspace *new,int *index)
 {
 
 	paddr_t newaddr=0;
@@ -561,7 +552,8 @@ paddr_t alloc_newPage(struct addrspace *new)
 	lock_acquire(vm_fault_lock);
 
 	//Call change coremap page entry in order to make the page available for you
-	change_coremap_page_entry(new_page_index);
+	if(coremap[new_page_index].page_status!=0)
+		change_coremap_page_entry(new_page_index);
 
 	lock_release(vm_fault_lock);
 
@@ -580,7 +572,7 @@ paddr_t alloc_newPage(struct addrspace *new)
 
 	newaddr = coremap[new_page_index].ce_paddr;
 
-	coremap[new_page_index].locked=0;
+	*index= new_page_index;
 
 	//Zero the region
 	as_zero_region(coremap[new_page_index].ce_paddr,1);

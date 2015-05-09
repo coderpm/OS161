@@ -222,11 +222,7 @@ alloc_kpages(int npages)
 
 			spinlock_release(&coremap_lock);
 
-			//Call change coremap page entry in order to make the page available for you
-			change_coremap_page_entry(index);
-
-
-			//Check if the page has to be evicted or was it free
+					//Check if the page has to be evicted or was it free
 			if(coremap[index].page_status==0)
 			{
 				//means page was free
@@ -255,6 +251,9 @@ alloc_kpages(int npages)
 				 */
 
 				//Get the index of the the page which has to be swapped out
+
+				//Call change coremap page entry in order to make the page available for you
+				change_coremap_page_entry(index);
 
 				va = PADDR_TO_KVADDR(coremap[index].ce_paddr);
 				pa = coremap[index].ce_paddr;
@@ -485,6 +484,7 @@ void
 page_free(paddr_t paddr){
 	spinlock_acquire(&coremap_lock);
 
+/*
 	struct page_table_entry *old;
 	old = curthread->t_addrspace->page_table;
 
@@ -500,6 +500,7 @@ page_free(paddr_t paddr){
 	}
 
 	curthread->t_addrspace->page_table = old;
+*/
 
 	int coremap_entr= (( paddr- coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
 	as_zero_region(coremap[coremap_entr].ce_paddr,1);
@@ -899,7 +900,8 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			spinlock_release(&coremap_lock);
 
 			//Call change coremap page entry in order to make the page available for you
-			change_coremap_page_entry(index);
+			if(coremap[index].page_status!=0)
+				change_coremap_page_entry(index);
 
 			//Now that particular entry at coremap[index] is free for you
 
@@ -966,6 +968,10 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					coremap_entry_index = ((pa- coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
 
 					coremap[coremap_entry_index].locked=1;
+
+					if(as->page_table->pa != coremap[coremap_entry_index].ce_paddr)
+						panic("COremap PA DOES NOT MATCH IN PRESENT == 1");
+
 					//Take the coremap lock and find an index to map the entry
 
 					//Change the page status to dirty if faulttype is write
@@ -1018,7 +1024,9 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					spinlock_release(&coremap_lock);
 
 					//Call change coremap page entry in order to make the page available for you
-					change_coremap_page_entry(index);
+					if(coremap[index].page_status!=0)
+						change_coremap_page_entry(index);
+
 
 					//Now that particular entry at coremap[index] is free for you
 
@@ -1116,7 +1124,8 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			spinlock_release(&coremap_lock);
 
 			//Call change coremap page entry in order to make the page available for you
-			change_coremap_page_entry(index);
+			if(coremap[index].page_status!=0)
+				change_coremap_page_entry(index);
 
 			//Now that particular entry at coremap[index] is free for you
 
@@ -1183,6 +1192,22 @@ void
 change_coremap_page_entry(int index)
 {
 	//Now decide what to do based on the current page status at the coremap[index]
+	struct page_table_entry *oldhead;
+	oldhead = coremap[index].as->page_table;
+	while(coremap[index].as->page_table!=NULL)
+	{
+		int ind;
+		ind = ((coremap[index].as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+
+		if(coremap[index].as->page_table->present==1)
+		{
+			if(coremap[ind].as != coremap[index].as)
+				panic("ADDRESS SPACE DO NOT MATCH after change coremap entry");
+		}
+		coremap[index].as->page_table = coremap[index].as->page_table->next;
+	}
+	coremap[index].as->page_table = oldhead;
+
 
 
 	if(coremap[index].page_status==0)
@@ -1202,29 +1227,33 @@ change_coremap_page_entry(int index)
 		* Meaning that the page is dirty --Give a call to find swapindex of the page at coremap[index]
 		* Call function to swapout the page at the index
 		*/
-		struct page_table_entry *oldhead;
-		struct addrspace *as;
-		as = coremap[index].as;
-		oldhead = coremap[index].as->page_table;
-		while(coremap[index].as->page_table!=NULL)
-		{
-			int ind;
-			ind = ((coremap[index].as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
-
-			if(coremap[index].as->page_table->present==1)
-			{
-				if(coremap[ind].as != as)
-						panic("ADDRESS SPACE DO NOT MATCH before sending to SWAPOUT");
-
-			}
-
-					coremap[index].as->page_table = coremap[index].as->page_table->next;
-			}
-			as->page_table=oldhead;
 
 
 		swapout_page(index);
 	}
+
+	oldhead = coremap[index].as->page_table;
+	while(coremap[index].as->page_table!=NULL)
+	{
+		int ind;
+		ind = ((coremap[index].as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+
+		if(coremap[index].as->page_table->present==1)
+		{
+			if(coremap[ind].as != coremap[index].as)
+					panic("ADDRESS SPACE DO NOT MATCH after change coremap entry");
+
+		}
+
+				coremap[index].as->page_table = coremap[index].as->page_table->next;
+		}
+		coremap[index].as->page_table = oldhead;
+
+		coremap[index].as=NULL;
+		coremap[index].chunk_allocated=0;
+		coremap[index].page_status=0;
+		coremap[index].time=0;
+
 
 }
 
@@ -1264,6 +1293,12 @@ evict_coremap_entry(int index)
 	}
 	if(flag==-1)
 		panic("Problem in evict");
+
+	coremap[index].as=NULL;
+	coremap[index].chunk_allocated=0;
+
+	coremap[index].page_status=0;
+	coremap[index].time=0;
 }
 
 /*
@@ -1282,32 +1317,68 @@ swapout_page(int index)
 
 	int swapout_index=-1;
 	struct page_table_entry *head;
+	struct page_table_entry *temp;
+	temp = coremap[index].as->page_table;
 
-	if(coremap[index].as->page_table!=NULL)
+	head= coremap[index].as->page_table;
+	//Iterate over the page table entries
+
+	while(temp !=NULL)
 	{
-		head= coremap[index].as->page_table;
-		//Iterate over the page table entries
-		while(coremap[index].as->page_table !=NULL)
+		if(coremap[index].ce_paddr == temp->pa)
 		{
-			if(coremap[index].ce_paddr == coremap[index].as->page_table->pa)
-			{
-				//Entry found where pa has been mapped -- Change to 0
-				coremap[index].as->page_table->present=0;
+			//Entry found where pa has been mapped -- Change to 0
+			temp->present=0;
 
-				//Call function to write this to the swap file
-				swapout_index = find_swapfile_entry(coremap[index].as,coremap[index].as->page_table->va);
-				tlb_vaddr=coremap[index].as->page_table->va;
-				coremap[index].as->page_table->swapfile_index = swapout_index;
-				break;
-			}
+			//Call function to write this to the swap file
+			swapout_index = find_swapfile_entry(coremap[index].as,temp->va);
+			if(swapout_index <1)
+				panic("Wrong Swapout index given");
 
-				coremap[index].as->page_table = coremap[index].as->page_table->next;
-		} //While ends
-
-			coremap[index].as->page_table = head;
+			tlb_vaddr=temp->va;
+			temp->swapfile_index = swapout_index;
+			break;
 		}
 
-	struct page_table_entry *oldhead;
+		temp = temp->next;
+
+	} //While ends
+	temp = head;
+	coremap[index].as->page_table=temp;
+
+	if(swapout_index <1)
+			panic("Wrong Swapout index given after for loop");
+
+	/*
+	while(coremap[index].as->page_table !=NULL)
+	{
+		if(coremap[index].ce_paddr == coremap[index].as->page_table->pa)
+		{
+			//Entry found where pa has been mapped -- Change to 0
+			coremap[index].as->page_table->present=0;
+
+			//Call function to write this to the swap file
+			swapout_index = find_swapfile_entry(coremap[index].as,coremap[index].as->page_table->va);
+			if(swapout_index <1)
+				panic("Wrong Swapout index given");
+
+			tlb_vaddr=coremap[index].as->page_table->va;
+			coremap[index].as->page_table->swapfile_index = swapout_index;
+			break;
+		}
+
+		coremap[index].as->page_table = coremap[index].as->page_table->next;
+
+	} //While ends
+
+	coremap[index].as->page_table = head;
+
+
+
+*/
+
+
+	/*struct page_table_entry *oldhead;
 	oldhead = coremap[index].as->page_table;
 	while(coremap[index].as->page_table!=NULL)
 	{
@@ -1323,7 +1394,7 @@ swapout_page(int index)
 
 			coremap[index].as->page_table = coremap[index].as->page_table->next;
 	}
-	as->page_table=oldhead;
+	as->page_table=oldhead;*/
 
 	my_tlb_shhotdown(tlb_vaddr);
 	//Means the existing page needs to be swapped out
@@ -1379,6 +1450,8 @@ find_swapfile_entry(struct addrspace *as,vaddr_t va)
 void
 write_page(paddr_t pa, int index)
 {
+	if(index<=0)
+		panic("Wrong index given in write page");
 
 	int result;
 	struct iovec iov;
