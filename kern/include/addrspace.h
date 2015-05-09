@@ -191,4 +191,8 @@ read_page(paddr_t pa, int index);
 int
 make_swap_file(void);
 
+void
+pagetable_copy(struct page_table_entry *old,struct page_table_entry **new,struct addrspace *as);
+
+
 #endif /* _ADDRSPACE_H_ */

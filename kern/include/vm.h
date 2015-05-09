@@ -102,6 +102,9 @@ struct coremap_entry{
 	struct addrspace *as; 	//Stores the address space pointer of the process which is mapped to the coremap entry
 	int chunk_allocated;	//Stores the number of chunk allocated so that it is easy to free
 	unsigned int time;
+
+	//1 means locked and 0 means unlocked
+	unsigned int locked:1;
 };
 
 extern struct coremap_entry *coremap;
@@ -128,6 +131,10 @@ extern struct lock *swap_file_lock;
 
 extern unsigned int swap_bit;
 extern struct cv *cv_swap;
+
+
+extern struct lock *vm_fault_lock;
+
 
 
 //Global variable for tlb locks --TODO Change this to have just one lock
@@ -174,13 +181,19 @@ find_swapfile_entry(struct addrspace *as,vaddr_t va);
 int
 find_available_page(void);
 
-void
-swapout_page(paddr_t pa,int index);
 
 void
 swapin_page(paddr_t pa,int index);
 
 int
 change_page_entry(int index,vaddr_t *va);
+
+void
+change_coremap_page_entry(int index);
+
+void
+swapout_page(int index);
+
+
 
 #endif /* _VM_H_ */
