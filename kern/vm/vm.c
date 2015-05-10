@@ -1881,6 +1881,3 @@ swapout_change_coremap_entry(int index, vaddr_t *va)
 	return swap_index;
 }
 
-
-
-

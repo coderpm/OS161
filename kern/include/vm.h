@@ -117,6 +117,7 @@ extern int32_t coremap_pages;
 //Global variable for coremap_lock
 extern struct spinlock coremap_lock;
 extern struct vnode *swapfile_vnode;
+extern struct lock *vm_fault_lock;
 //Swap index structure and Global variable for accessing the swap_file array and lock
 struct swap_elements
 {
