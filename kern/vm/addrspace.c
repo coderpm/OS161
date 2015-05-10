@@ -68,6 +68,7 @@ as_create(void)
 
 	as->regions=NULL;
 
+
 	return as;
 }
 
@@ -346,7 +347,9 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	{
 		if(count==0)
 		{
+			lock_acquire(vm_fault_lock);
 			new->regions=(struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
+			lock_release(vm_fault_lock);
 			newregionshead= new->regions;
 			new->regions->va_start= old->regions->va_start;
 			new->regions->region_numpages= old->regions->region_numpages;
@@ -355,7 +358,9 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 			old->regions= old->regions->next_region;
 			if(old->regions!= NULL)
 			{
+				lock_acquire(vm_fault_lock);
 				new->regions->next_region= (struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
+				lock_release(vm_fault_lock);
 				new->regions= new->regions->next_region;
 			}
 			else
@@ -372,7 +377,9 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 				new->regions->va_end= old->regions->va_end;
 				old->regions= old->regions->next_region;
 				if(old->regions!= NULL){
+					lock_acquire(vm_fault_lock);
 					new->regions->next_region= (struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
+					lock_release(vm_fault_lock);
 					new->regions= new->regions->next_region;
 				}
 				else
@@ -417,10 +424,11 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 			int new_index;
 			if(count_pt==0)
 			{
-
+				lock_acquire(vm_fault_lock);
 				new->page_table=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
+				lock_release(vm_fault_lock);
 				new_ptentry_head= new->page_table;
-				new->page_table->pa= alloc_newPage(new,&new_index);
+				new->page_table->pa= alloc_newPage(new,&new_index,old);
 
 				if(old->page_table->present== 1)
 				{
@@ -444,7 +452,9 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 
 				if(old->page_table!= NULL)
 				{
+					lock_acquire(vm_fault_lock);
 					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
+					lock_release(vm_fault_lock);
 					new->page_table= new->page_table->next;
 				}
 				else
@@ -456,7 +466,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 			}
 			else
 			{
-				new->page_table->pa= alloc_newPage(new,&new_index);
+				new->page_table->pa= alloc_newPage(new,&new_index,old);
 
 				if(old->page_table->present== 1)
 				{
@@ -476,7 +486,9 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 
 				if(old->page_table!= NULL)
 				{
+					lock_acquire(vm_fault_lock);
 					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
+					lock_release(vm_fault_lock);
 					new->page_table= new->page_table->next;
 				}
 				else
@@ -534,7 +546,8 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 }
 
 
-paddr_t alloc_newPage(struct addrspace *new,int *index)
+paddr_t
+alloc_newPage(struct addrspace *new,int *index,struct addrspace *old)
 {
 
 	paddr_t newaddr=0;
@@ -544,6 +557,13 @@ paddr_t alloc_newPage(struct addrspace *new,int *index)
 	spinlock_acquire(&coremap_lock);
 
 	new_page_index = find_available_page();
+
+	if(coremap[new_page_index].as ==new)
+		panic("COREMAP INDEX ADDRESS SPACE MATCHES WITH NEW");
+
+	if(coremap[new_page_index].as ==old)
+		panic("COREMAP INDEX ADDRESS SPACE MATCHES WITH OLD");
+
 
 	coremap[new_page_index].locked=1;
 
@@ -568,7 +588,7 @@ paddr_t alloc_newPage(struct addrspace *new,int *index)
 	coremap[new_page_index].as=new;
 	coremap[new_page_index].chunk_allocated=0;
 	coremap[new_page_index].page_status=2;
-	coremap[new_page_index].time=seconds+nanoseconds;
+	coremap[new_page_index].time=nanoseconds;
 
 	newaddr = coremap[new_page_index].ce_paddr;
 

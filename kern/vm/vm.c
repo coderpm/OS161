@@ -799,6 +799,18 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 	coremap[coremap_entry_index].locked=0;
 
+
+
+	for(int counter=0;counter<total_systempages;counter++)
+	{
+		if(paddr == coremap[counter].ce_paddr)
+		{
+			if(coremap[counter].locked!=0)
+				panic("COremap not getting UNLOCKED");
+		}
+	}
+
+
 	struct page_table_entry *oldhead;
 	oldhead = as->page_table;
 
@@ -814,7 +826,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 
 		}
 
-		coremap[ind].locked=1;
+
 		as->page_table = as->page_table->next;
 	}
 
@@ -911,6 +923,11 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			as->page_table->present=1;
 			as->page_table->va=faultaddr;
 			as->page_table->next=NULL;
+			as->page_table->swapfile_index=0;
+
+
+			as->pagelist_head = as->page_table;
+
 
 			//Getting time
 			time_t seconds;
@@ -921,7 +938,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			coremap[index].as=as;
 			coremap[index].chunk_allocated=0;
 			coremap[index].page_status=2;
-			coremap[index].time=seconds;
+			coremap[index].time=nanoseconds;
 
 			pa = coremap[index].ce_paddr;
 
@@ -1044,7 +1061,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					//Update the coremap entries
 					coremap[index].as=as;
 					coremap[index].chunk_allocated=0;
-					coremap[index].time=seconds;
+					coremap[index].time=nanoseconds;
 
 					pa = coremap[index].ce_paddr;
 
@@ -1133,9 +1150,10 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			entry->permissions =permissions;
 			entry->present=1;
 			entry->va=faultaddr;
+			entry->swapfile_index=0;
+
 
 			entry->next=head;
-
 			//Getting time
 			time_t seconds;
 			uint32_t nanoseconds;
@@ -1145,7 +1163,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			coremap[index].as=as;
 			coremap[index].chunk_allocated=0;
 			coremap[index].page_status=2;
-			coremap[index].time=seconds;
+			coremap[index].time=nanoseconds;
 
 			pa = coremap[index].ce_paddr;
 

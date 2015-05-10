@@ -116,7 +116,7 @@ struct addrspace {
 
         struct addr_regions *regions;		//Link list of all the regions
         struct lock *lock_page_table;		//Lock for accessing the page table
-
+        struct page_table_entry *pagelist_head;
         #endif
 };
 
@@ -170,7 +170,7 @@ int               as_define_stack(struct addrspace *as, vaddr_t *initstackptr);
 void			  as_zero_region(paddr_t paddr, unsigned npages);
 
 //Added by Mohit
-paddr_t alloc_newPage(struct addrspace *new,int *index);
+paddr_t alloc_newPage(struct addrspace *new,int *index,struct addrspace *old);
 
 
 /*
