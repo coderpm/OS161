@@ -968,65 +968,43 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 
 		//Iterate over the page table entries
 
-		while(as->page_table !=NULL)
+		while(head !=NULL)
 		{
-			//Check if faultaddress has been mapped till now
-			if(as->page_table->va == faultaddr)
+			if(head->va == faultaddr)
 			{
-				//Mapping exists - Now check if the present bit for the mapping is true or false
-				if(as->page_table->present == 1)
+				if(head->present==1)
 				{
 					spinlock_acquire(&coremap_lock);
 
 					//present bit is true -- means it is present in memory
-					pa = as->page_table->pa;
+					pa = head->pa;
 					int coremap_entry_index;
 
 					coremap_entry_index = ((pa- coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
 
 					coremap[coremap_entry_index].locked=1;
 
-					if(as->page_table->pa != coremap[coremap_entry_index].ce_paddr)
+					if(head->pa !=  coremap[coremap_entry_index].ce_paddr)
 						panic("COremap PA DOES NOT MATCH IN PRESENT == 1");
-
-					//Take the coremap lock and find an index to map the entry
 
 					//Change the page status to dirty if faulttype is write
 					switch (faulttype)
 					{
 						case VM_FAULT_WRITE:
 							coremap[coremap_entry_index].page_status=2;
-						break;
+							break;
 					}
-					//Re-assign back the head
-					as->page_table = head;
+
 
 					spinlock_release(&coremap_lock);
 
 					struct page_table_entry *oldhead;
 					oldhead = as->page_table;
 
-					while(as->page_table!=NULL)
-					{
-						int ind;
-						ind = ((as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
-
-						if(as->page_table->present==1)
-						{
-							if(coremap[ind].as != as)
-								panic("ADDRESS SPACE DO NOT MATCH IN AFTER Handle ADDRESS if present==1");
-						}
-
-						as->page_table = as->page_table->next;
-					}
-
-					as->page_table=oldhead;
-
-
 					return pa;
 
-				}
-				else if(as->page_table->present == 0)
+				}//End of if checking whether present==1
+				else if(head->present == 0)
 				{
 					//Meaning that the page has been swapped out currently -- Read from file to SWAP BACK IN
 
@@ -1048,10 +1026,10 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					//Now that particular entry at coremap[index] is free for you
 
 					//update the page table entries at that index
-					as->page_table->pa = coremap[index].ce_paddr;
-					as->page_table->permissions=permissions;
-					as->page_table->present=1;
-					as->page_table->va=faultaddr;
+					head->pa = coremap[index].ce_paddr;
+					head->permissions=permissions;
+					head->present=1;
+					head->va=faultaddr;
 
 					//Getting time
 					time_t seconds;
@@ -1069,19 +1047,16 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					switch (faulttype)
 					{
 						case VM_FAULT_READ:
-							coremap[index].page_status=3;
-							break;
+						coremap[index].page_status=3;
+						break;
 
 						case VM_FAULT_WRITE:
-							coremap[index].page_status=2;
-							break;
+						coremap[index].page_status=2;
+						break;
 
 					}
 
-					int swapin_index= as->page_table->swapfile_index;
-
-					//Re-assign back the head
-					as->page_table = head;
+					int swapin_index= head->swapfile_index;
 
 					//Zero the region
 					as_zero_region(coremap[index].ce_paddr,1);
@@ -1089,41 +1064,19 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					//Swap in the page from the swapfile
 					swapin_page(pa,swapin_index);
 
-					struct page_table_entry *oldhead;
-					oldhead = as->page_table;
-
-					while(as->page_table!=NULL)
-					{
-						int ind;
-						ind = ((as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
-
-						if(as->page_table->present==1)
-						{
-							if(coremap[ind].as != as)
-								panic("ADDRESS SPACE DO NOT MATCH IN AFTER Handle ADDRESS if present==0");
-
-						}
-
-						as->page_table = as->page_table->next;
-
-					}
-					as->page_table=oldhead;
-
-
-
 					return pa;
 
 				}
-			}
 
 
-			//Move to next entry in the page table link list
-			as->page_table = as->page_table->next;
+			}//End of page va == fault addr
+
+			head = head->next;
 
 		} // End of while iterating over the page table entries
 
-		//Re-assign back the head
-		as->page_table = head;
+		head= as->page_table;
+
 
 		if(pa==0)
 		{
@@ -1173,25 +1126,6 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			//Zero the region
 			as_zero_region(coremap[index].ce_paddr,1);
 
-			struct page_table_entry *oldhead;
-			oldhead = as->page_table;
-
-			while(as->page_table!=NULL)
-			{
-				int ind;
-				ind = ((as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
-
-				if(as->page_table->present==1)
-				{
-					if(coremap[ind].as != as)
-						panic("ADDRESS SPACE DO NOT MATCH IN AFTER Handle ADDRESS if pa == 0");
-				}
-
-				as->page_table = as->page_table->next;
-
-			}
-			as->page_table=oldhead;
-
 			return pa;
 
 		}////Meaning no page has been mapped till now for the fault address that is why pa has not been assigned till now
@@ -1210,6 +1144,7 @@ void
 change_coremap_page_entry(int index)
 {
 	//Now decide what to do based on the current page status at the coremap[index]
+/*
 	struct page_table_entry *oldhead;
 	oldhead = coremap[index].as->page_table;
 	while(coremap[index].as->page_table!=NULL)
@@ -1225,6 +1160,7 @@ change_coremap_page_entry(int index)
 		coremap[index].as->page_table = coremap[index].as->page_table->next;
 	}
 	coremap[index].as->page_table = oldhead;
+*/
 
 
 
@@ -1250,6 +1186,7 @@ change_coremap_page_entry(int index)
 		swapout_page(index);
 	}
 
+/*
 	oldhead = coremap[index].as->page_table;
 	while(coremap[index].as->page_table!=NULL)
 	{
@@ -1266,6 +1203,7 @@ change_coremap_page_entry(int index)
 				coremap[index].as->page_table = coremap[index].as->page_table->next;
 		}
 		coremap[index].as->page_table = oldhead;
+*/
 
 		coremap[index].as=NULL;
 		coremap[index].chunk_allocated=0;
@@ -1294,17 +1232,17 @@ evict_coremap_entry(int index)
 		head= coremap[index].as->page_table;
 		//Iterate over the page table entries
 
-		while(coremap[index].as->page_table !=NULL)
+		while(head !=NULL)
 		{
-			if(coremap[index].ce_paddr == coremap[index].as->page_table->pa)
+			if(coremap[index].ce_paddr == head->pa)
 			{
 				//Entry found where pa has been mapped -- Change to 0
-				coremap[index].as->page_table->present=0;
+				head->present=0;
 				flag=1;
 				break;
 			}
 
-			coremap[index].as->page_table = coremap[index].as->page_table->next;
+			head = head->next;
 
 		}
 		coremap[index].as->page_table = head;
@@ -1341,78 +1279,27 @@ swapout_page(int index)
 	head= coremap[index].as->page_table;
 	//Iterate over the page table entries
 
-	while(temp !=NULL)
+	while(head != NULL)
 	{
-		if(coremap[index].ce_paddr == temp->pa)
+		if(coremap[index].ce_paddr == head->pa)
 		{
-			//Entry found where pa has been mapped -- Change to 0
-			temp->present=0;
-
+			head->present=0;
 			//Call function to write this to the swap file
-			swapout_index = find_swapfile_entry(coremap[index].as,temp->va);
+			swapout_index = find_swapfile_entry(coremap[index].as,head->va);
 			if(swapout_index <1)
 				panic("Wrong Swapout index given");
 
-			tlb_vaddr=temp->va;
-			temp->swapfile_index = swapout_index;
+			tlb_vaddr=head->va;
+			head->swapfile_index= swapout_index;
 			break;
+
 		}
-
-		temp = temp->next;
-
-	} //While ends
-	temp = head;
-	coremap[index].as->page_table=temp;
+		head = head->next;
+	}
 
 	if(swapout_index <1)
 			panic("Wrong Swapout index given after for loop");
 
-	/*
-	while(coremap[index].as->page_table !=NULL)
-	{
-		if(coremap[index].ce_paddr == coremap[index].as->page_table->pa)
-		{
-			//Entry found where pa has been mapped -- Change to 0
-			coremap[index].as->page_table->present=0;
-
-			//Call function to write this to the swap file
-			swapout_index = find_swapfile_entry(coremap[index].as,coremap[index].as->page_table->va);
-			if(swapout_index <1)
-				panic("Wrong Swapout index given");
-
-			tlb_vaddr=coremap[index].as->page_table->va;
-			coremap[index].as->page_table->swapfile_index = swapout_index;
-			break;
-		}
-
-		coremap[index].as->page_table = coremap[index].as->page_table->next;
-
-	} //While ends
-
-	coremap[index].as->page_table = head;
-
-
-
-*/
-
-
-	/*struct page_table_entry *oldhead;
-	oldhead = coremap[index].as->page_table;
-	while(coremap[index].as->page_table!=NULL)
-	{
-		int ind;
-		ind = ((coremap[index].as->page_table->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
-
-		if(coremap[index].as->page_table->present ==1)
-		{
-			if(coremap[ind].as != as)
-				panic("ADDRESS SPACE DO NOT MATCH IN AFTER SWAPOUT");
-
-		}
-
-			coremap[index].as->page_table = coremap[index].as->page_table->next;
-	}
-	as->page_table=oldhead;*/
 
 	my_tlb_shhotdown(tlb_vaddr);
 	//Means the existing page needs to be swapped out

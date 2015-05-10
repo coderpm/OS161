@@ -549,10 +549,16 @@ alloc_newPage(struct addrspace *new,int *index,struct addrspace *old)
 	new_page_index = find_available_page();
 
 	if(coremap[new_page_index].as ==new)
-		panic("COREMAP INDEX ADDRESS SPACE MATCHES WITH NEW");
+	{
+//		panic("COREMAP INDEX ADDRESS SPACE MATCHES WITH NEW");
+
+	}
 
 	if(coremap[new_page_index].as ==old)
-		panic("COREMAP INDEX ADDRESS SPACE MATCHES WITH OLD");
+	{
+//		panic("COREMAP INDEX ADDRESS SPACE MATCHES WITH OLD");
+
+	}
 
 
 	coremap[new_page_index].locked=1;
