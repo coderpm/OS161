@@ -105,6 +105,8 @@ struct coremap_entry{
 
 	//1 means locked and 0 means unlocked
 	unsigned int locked:1;
+
+	struct page_table_entry *page;
 };
 
 extern struct coremap_entry *coremap;
