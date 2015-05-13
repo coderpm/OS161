@@ -284,27 +284,22 @@ alloc_kpages(int npages)
 		}
 		else if(npages >1)
 		{
-			panic("CHANGE PAGE ENTRY DOES NOT WORK HERE IN NPAGES>1");
+		//	panic("CHANGE PAGE ENTRY DOES NOT WORK HERE IN NPAGES>1");
 			spinlock_acquire(&coremap_lock);
 			int index = find_page_available(npages);
+
+			spinlock_release(&coremap_lock);
+
 			if(index<0)
 				pa=0;
+
 			else
 			{
-
 				//Meaning pages found to replace
 				//As the pages are contiguous -- Iterate over them and change page entries one by one
 				for(int i =index;i<index+npages;i++)
 				{
-					//Take the page table lock
-					lock_acquire(coremap[index].as->lock_page_table);
-
-
-					//TODO:: CHNAGE THIS
-//					change_page_entry(i);
-
-					//Release page table lock
-					lock_release(coremap[index].as->lock_page_table);
+					change_coremap_page_entry(i);
 
 					va = PADDR_TO_KVADDR(coremap[index].ce_paddr);
 
@@ -321,7 +316,7 @@ alloc_kpages(int npages)
 
 				coremap[index].chunk_allocated=npages;
 				as_zero_region(coremap[index].ce_paddr,npages);
-				spinlock_release(&coremap_lock);
+
 			}
 		} //End of if checking whether npages more than 1
 
@@ -402,7 +397,7 @@ find_available_page()
 	{
 		for(counter=coremap_pages;counter<total_systempages;counter++)
 		{
-			if(coremap[counter].page_status==0 && coremap[counter].locked==0)
+			if(coremap[counter].page_status==0)
 			{
 				//Means found the page with status as free
 				index=counter;
@@ -1395,12 +1390,6 @@ find_npages(int npages)
 		}// End of for loop over all the pages
 	}//end of main while
 
-/*
-	if(!found_range)
-	{
-		//panic("Couldnt find the pages\n");
-	}
-*/
 	startindex=-1;
 	found_range= false;
 	count=0;
