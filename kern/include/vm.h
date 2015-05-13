@@ -97,6 +97,7 @@ struct coremap_entry{
 	 * Set to 2 if page status is Dirty
 	 * Set to 3 if page status is Clean
 	 */
+
 	int32_t page_status;
 
 	struct addrspace *as; 	//Stores the address space pointer of the process which is mapped to the coremap entry
@@ -106,7 +107,6 @@ struct coremap_entry{
 	//1 means locked and 0 means unlocked
 	unsigned int locked:1;
 
-	struct page_table_entry *page;
 };
 
 extern struct coremap_entry *coremap;
@@ -196,6 +196,10 @@ change_coremap_page_entry(int index);
 void
 swapout_page(int index);
 
+void
+free_coremap_locked(paddr_t);
 
+void
+check_coremap(int);
 
 #endif /* _VM_H_ */

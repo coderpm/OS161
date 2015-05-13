@@ -116,7 +116,10 @@ struct addrspace {
 
         struct addr_regions *regions;		//Link list of all the regions
         struct lock *lock_page_table;		//Lock for accessing the page table
+
+
         struct page_table_entry *pagelist_head;
+        int num_pages;
         #endif
 };
 
@@ -191,8 +194,19 @@ read_page(paddr_t pa, int index);
 int
 make_swap_file(void);
 
+struct page_table_entry*
+pagetable_copy(struct page_table_entry *oldpage,struct addrspace *as);
+
 void
-pagetable_copy(struct page_table_entry *old,struct page_table_entry **new,struct addrspace *as);
+fix_old_pages(struct addrspace *old);
+
+void
+free_old_pages(struct addrspace *old);
+
+
+int
+find_index(paddr_t pa);
+
 
 
 #endif /* _ADDRSPACE_H_ */
