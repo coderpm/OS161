@@ -85,6 +85,7 @@ struct lock *vm_fault_lock;
 
 unsigned int swap_bit; // 0 means No Write , 1 means Yes Write
 struct cv *cv_swap;
+struct lock *ascopy_lock;
 
 struct spinlock tlb_lock1;
 struct spinlock tlb_lock2;
@@ -112,6 +113,7 @@ vm_bootstrap(void)
 	spinlock_init(&tlb_lock4);
 
 	vm_fault_lock = lock_create("vm_fault_lock");
+	ascopy_lock = lock_create("as_copy_lock");
 
 
 	//Get the first and last physical address of RAM
@@ -253,7 +255,9 @@ alloc_kpages(int npages)
 				//Get the index of the the page which has to be swapped out
 
 				//Call change coremap page entry in order to make the page available for you
+
 				change_coremap_page_entry(index);
+
 
 				va = PADDR_TO_KVADDR(coremap[index].ce_paddr);
 				pa = coremap[index].ce_paddr;
@@ -748,7 +752,6 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 						{
 							//mark found as true
 							address_found=true;
-
 							break;
 						}
 						else
@@ -757,8 +760,6 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 							as->regions = head;
 							lock_release(vm_fault_lock);
 							return EFAULT;
-
-
 						}
 
 					}
@@ -853,108 +854,87 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 	 * First check if the address space is not null and if page table entry exists
 	 */
 
+
 	if(as->page_table==NULL)
 	{
-			/**
-			 * Meaning that there are no entries for the page table as of now
-			 * In such case -- Allocate space for the page table entry and DO
-			 * 1. find index where it can be mapped by calling -- find_available_page (take coremap lock)
-			 * 2. Map the pa to va in the page entry and update coremap index too
-			 */
-
-			as->page_table = (struct page_table_entry *) kmalloc(sizeof(struct page_table_entry));
-			as->num_pages= as->num_pages+1;
-			//Take the coremap lock and find an index to map the entry
-			spinlock_acquire(&coremap_lock);
-
-			int index;
-			index = find_available_page();
-
-			coremap[index].locked=1;
-
-			spinlock_release(&coremap_lock);
-
-			//Call change coremap page entry in order to make the page available for you
-//			if(coremap[index].page_status!=0)
-				change_coremap_page_entry(index);
-
-			//Now that particular entry at coremap[index] is free for you
-
-			//update the page table entries at that index
-			as->page_table->pa = coremap[index].ce_paddr;
-			as->page_table->permissions =permissions;
-			as->page_table->present=1;
-			as->page_table->va=faultaddr;
-			as->page_table->next=NULL;
-
-			as->pagelist_head = as->page_table;
-
-			//Getting time
-			time_t seconds;
-			uint32_t nanoseconds;
-			gettime(&seconds, &nanoseconds);
-
-			//Update the coremap entries
-			coremap[index].as=as;
-			coremap[index].chunk_allocated=0;
-			coremap[index].page_status=2;
-			coremap[index].time=nanoseconds;
-
-			pa = coremap[index].ce_paddr;
-
-			//Zero the region
-			as_zero_region(coremap[index].ce_paddr,1);
-
-			check_coremap(1);
-
-			return pa;
-
-	}
-	else if(as->page_table!=NULL)
-	{
 		/**
-		 * Meaning entries exist in the page table of addrspace
-		 * First check if the fault address entry exists in the page table entries
-		 * 1. Take the pagetable lock and iterate over the page map entries
-		 * 2. if entry found -- Do
-		 * 	  2.1 Check if present bit is 1 -- Then just assign the entry and return the pa mapped to the entry
-		 * 	  2.2 If present bit is 0 -- Then take coremap lock and find an index where the entry can be mapped by calling alloc_upages
-		 * 	      map the entry at the index and update the coremap index too
-		 * 3. Release the coremap lock and page table lock
-		 */
+		* Meaning that there are no entries for the page table as of now
+		* In such case -- Allocate space for the page table entry and DO
+		* 1. find index where it can be mapped by calling -- find_available_page (take coremap lock)
+		* 2. Map the pa to va in the page entry and update coremap index too
+		*/
 
 
-		struct page_table_entry *head;
-		head= as->page_table;
+		as->page_table = (struct page_table_entry *) kmalloc(sizeof(struct page_table_entry));
+		as->num_pages= as->num_pages+1;
+		//Take the coremap lock and find an index to map the entry
+		spinlock_acquire(&coremap_lock);
 
-		//Iterate over the page table entries
+		int index;
+		index = find_available_page();
 
-		while(as->page_table !=NULL)
+		coremap[index].locked=1;
+
+		spinlock_release(&coremap_lock);
+
+		//Call change coremap page entry in order to make the page available for you
+		change_coremap_page_entry(index);
+
+		//Now that particular entry at coremap[index] is free for you
+
+		//update the page table entries at that index
+		as->page_table->pa = coremap[index].ce_paddr;
+		as->page_table->permissions =permissions;
+		as->page_table->present=1;
+		as->page_table->va=faultaddr;
+		as->page_table->next=NULL;
+
+		as->pagelist_head = as->page_table;
+
+		//Getting time
+		time_t seconds;
+		uint32_t nanoseconds;
+		gettime(&seconds, &nanoseconds);
+
+		//Update the coremap entries
+		coremap[index].as=as;
+		coremap[index].chunk_allocated=0;
+		coremap[index].page_status=2;
+		coremap[index].time=nanoseconds;
+
+		pa = coremap[index].ce_paddr;
+
+		//Zero the region
+		as_zero_region(coremap[index].ce_paddr,1);
+
+		check_coremap(1);
+
+		return pa;
+
+	} //End of checking if addrspace == NULL
+	else if(as->page_table !=NULL)
+	{
+		struct page_table_entry *iter;
+		iter = as->pagelist_head;
+
+		while(iter != NULL)
 		{
-			//Check if faultaddress has been mapped till now
-			if(as->page_table->va == faultaddr)
+			if(iter->va == faultaddr)
 			{
-				//Mapping exists - Now check if the present bit for the mapping is true or false
-				if(as->page_table->present == 1)
+				if(iter->present == 1)
 				{
 					spinlock_acquire(&coremap_lock);
 
 					//present bit is true -- means it is present in memory
-					pa = as->page_table->pa;
+					pa = iter->pa;
+
 					int index;
+					index = find_index(pa);
 
-					index = ((pa- coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
-
-					coremap[index].locked=1;
-
-					if(as->page_table->pa != coremap[index].ce_paddr)
+					if(pa != coremap[index].ce_paddr)
+						panic("WRONG PA IN PRESENT == 1 , PA IS %d",pa);
+					if(iter->pa != coremap[index].ce_paddr)
 						panic("COremap PA DOES NOT MATCH IN PRESENT == 1");
-
-					if(as != coremap[index].as)
-						panic("COremap AS DOES NOT MATCH IN PRESENT == 1");
-
-
-					//Take the coremap lock and find an index to map the entry
 
 					//Change the page status to dirty if faulttype is write
 					switch (faulttype)
@@ -963,23 +943,24 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 							coremap[index].page_status=2;
 						break;
 					}
-					//Re-assign back the head
-					as->page_table = head;
-
 
 					if(coremap[index].as->page_table != coremap[index].as->pagelist_head)
 						panic("Head does not match with page table head in PRESENT==1");
 
-					spinlock_release(&coremap_lock);
+					if(as->page_table != as->pagelist_head)
+						panic("Head does not match with page table head in PRESENT==1 while checking the address");
 
-					check_coremap(2);
+
+					spinlock_release(&coremap_lock);
+					check_addrspace(as);
 
 
 					return pa;
 
-				}
-				else if(as->page_table->present == 0)
+				}//End of IF checking present == 1
+				else
 				{
+					//Meaning present == 0
 					//Meaning that the page has been swapped out currently -- Read from file to SWAP BACK IN
 
 					//Take the coremap lock and find an index to map the entry
@@ -993,17 +974,13 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					spinlock_release(&coremap_lock);
 
 					//Call change coremap page entry in order to make the page available for you
-	//				if(coremap[index].page_status!=0)
-						change_coremap_page_entry(index);
+					change_coremap_page_entry(index);
 
-
-					//Now that particular entry at coremap[index] is free for you
-
-					//update the page table entries at that index
-					as->page_table->pa = coremap[index].ce_paddr;
-					as->page_table->permissions=permissions;
-					as->page_table->present=1;
-					as->page_table->va=faultaddr;
+					//Now that particular entry at coremap[index] is free for you -- update the page table entries at that index
+					iter->pa = coremap[index].ce_paddr;
+					iter->permissions=permissions;
+					iter->present=1;
+					iter->va=faultaddr;
 
 					//Getting time
 					time_t seconds;
@@ -1021,23 +998,22 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					switch (faulttype)
 					{
 						case VM_FAULT_READ:
-							coremap[index].page_status=3;
-							break;
+						coremap[index].page_status=3;
+						break;
 
 						case VM_FAULT_WRITE:
-							coremap[index].page_status=2;
-							break;
+						coremap[index].page_status=2;
+						break;
 
 					}
 
-					int swapin_index= as->page_table->swapfile_index;
-
-					//Re-assign back the head
-					as->page_table = head;
+					int swapin_index= iter->swapfile_index;
 
 					if(coremap[index].as->page_table != coremap[index].as->pagelist_head)
 						panic("Head does not match with page table head in PRESENT==0");
 
+					if(as->page_table != as->pagelist_head)
+						panic("Head does not match with page table head in PRESENT==0 while checking the address");
 
 					//Zero the region
 					as_zero_region(coremap[index].ce_paddr,1);
@@ -1045,27 +1021,23 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					//Swap in the page from the swapfile
 					swapin_page(pa,swapin_index);
 
-					check_coremap(3);
+					check_addrspace(as);
+
 
 					return pa;
 
 				}
-			}
 
-
-			//Move to next entry in the page table link list
-			as->page_table = as->page_table->next;
-
-		} // End of while iterating over the page table entries
-
-		//Re-assign back the head
-		as->page_table = head;
-
+			}//End of IF checking that va is the faultaddr
+			iter = iter->next;
+		} // End of while iterating over page_table entries
 		if(pa==0)
 		{
+
 			//Meaning no page has been mapped till now for the fault address that is why pa has not been assigned till now
 			struct page_table_entry *entry = (struct page_table_entry *) kmalloc(sizeof(struct page_table_entry));
 			as->num_pages= as->num_pages+1;
+
 
 
 			//Take the coremap lock and find an index to map the entry
@@ -1074,21 +1046,16 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 			int index;
 			index = find_available_page();
 
-			coremap[index].locked=1;
-
 			spinlock_release(&coremap_lock);
 
 			//Call change coremap page entry in order to make the page available for you
-//			if(coremap[index].page_status!=0)
-				change_coremap_page_entry(index);
-
+			change_coremap_page_entry(index);
 			//Now that particular entry at coremap[index] is free for you
 
 			entry->pa = coremap[index].ce_paddr;
 			entry->permissions =permissions;
 			entry->present=1;
 			entry->va=faultaddr;
-
 			entry->next=NULL;
 
 			//Getting time
@@ -1104,9 +1071,6 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 
 			pa = coremap[index].ce_paddr;
 
-			/*add the entry created to the head of the page table list*/
-			//as->page_table= entry;
-
 			//Zero the region
 			as_zero_region(coremap[index].ce_paddr,1);
 			struct page_table_entry *head;
@@ -1119,26 +1083,26 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 					as->page_table->next = entry;
 					break;
 				}
-
 				as->page_table = as->page_table->next;
 			}
 
 			as->page_table = head;
-
 			if(coremap[index].as->page_table != coremap[index].as->pagelist_head)
 				panic("Head does not match with page table head in PA==0");
 
+			if(as->page_table != as->pagelist_head)
+				panic("Head does not match with page table head in PA==0 while checking the address");
 
-			check_coremap(4);
+			check_addrspace(as);
 
 
 			return pa;
+		}
 
-		}////Meaning no page has been mapped till now for the fault address that is why pa has not been assigned till now
-
-	}//End of IF checking whether the page table entries is not NULL
+	}//End of if checking whether page table is not null
 
 	return pa;
+
 }
 
 
@@ -1202,7 +1166,7 @@ evict_coremap_entry(int index)
 	{
 		if(pa == head->pa)
 		{
-			head->pa =0;
+			head->present = 0;
 			flag=1;
 			break;
 		}
@@ -1355,7 +1319,7 @@ make_swap_file()
 	result = vfs_open(k_des,O_CREAT, 0, &swapfile_vnode);
 
 	if (result) {
-		lock_release(swap_file_lock);
+//		lock_release(swap_file_lock);
 		return result;
 	}
 
@@ -1494,6 +1458,22 @@ free_coremap_locked(paddr_t pa)
 
 	}
 }
+void
+check_addrspace(struct addrspace *as)
+{
+	struct page_table_entry *head;
+	head = as->pagelist_head;
+
+	while(head != NULL)
+	{
+		if(head->pa < 1)
+			panic("PA NOT PROPER");
+
+		head = head->next;
+	}
+
+}
+
 
 void
 check_coremap(int f)

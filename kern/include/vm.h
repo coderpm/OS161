@@ -120,6 +120,8 @@ extern int32_t coremap_pages;
 extern struct spinlock coremap_lock;
 extern struct vnode *swapfile_vnode;
 extern struct lock *vm_fault_lock;
+extern struct lock *ascopy_lock;
+
 //Swap index structure and Global variable for accessing the swap_file array and lock
 struct swap_elements
 {
@@ -201,5 +203,9 @@ free_coremap_locked(paddr_t);
 
 void
 check_coremap(int);
+
+void
+check_addrspace(struct addrspace *as);
+
 
 #endif /* _VM_H_ */

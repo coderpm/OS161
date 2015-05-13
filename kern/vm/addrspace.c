@@ -91,7 +91,6 @@ as_destroy(struct addrspace *as)
 		}
 		struct page_table_entry *next_page= as->page_table;
 		while(as->page_table!= NULL){
-			lock_acquire(as->lock_page_table);
 			next_page = as->page_table->next;
 			if(as->page_table->present==0){
 				//Acquiring lock for swap array
@@ -106,7 +105,6 @@ as_destroy(struct addrspace *as)
 			as->page_table->present=0;
 			as->page_table->va=0;
 			as->page_table->swapfile_index=0;
-			lock_release(as->lock_page_table);
 			kfree(as->page_table);
 			as->page_table= next_page;
 		}
@@ -331,6 +329,12 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
+
+
+	lock_acquire(ascopy_lock);
+
+	fix_old_pages(old);
+
 	struct addrspace *new;
 
 	//Creating new address space calling as create, which will initialize lock also;
@@ -350,7 +354,10 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 	{
 		if(count==0)
 		{
+
 			new->regions=(struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
+
+
 			newregionshead= new->regions;
 			new->regions->va_start= old->regions->va_start;
 			new->regions->region_numpages= old->regions->region_numpages;
@@ -359,7 +366,9 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 			old->regions= old->regions->next_region;
 			if(old->regions!= NULL)
 			{
+
 				new->regions->next_region= (struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
+
 				new->regions= new->regions->next_region;
 			}
 			else
@@ -376,7 +385,9 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 				new->regions->va_end= old->regions->va_end;
 				old->regions= old->regions->next_region;
 				if(old->regions!= NULL){
+
 					new->regions->next_region= (struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
+
 					new->regions= new->regions->next_region;
 				}
 				else
@@ -396,84 +407,109 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		new->stackbase_top= old->stackbase_top;
 
 
-		fix_old_pages(old);
+		//Copy the page tables
+		//Coping page table to new address space page table structure
+		struct page_table_entry *new_ptentry_head;
+		struct page_table_entry *old_ptentry_head;
+		old_ptentry_head = old->page_table;
+		int count_pt= 0;
 
-		if(old->page_table != NULL)
+		while(old_ptentry_head != NULL)
 		{
-			new->page_table = (struct page_table_entry *) kmalloc(sizeof(struct page_table_entry));
-			new->pagelist_head = new->page_table;
-			new->num_pages = old->num_pages;
-
-		}
-		struct page_table_entry *oldhead;
-		oldhead = old->page_table;
-
-		for(int i=0;i<old->num_pages;i++)
-		{
-			new->page_table->permissions = oldhead->permissions;
-			new->page_table->present   = 1;
-			new->page_table->swapfile_index = 0;
-			new->page_table->va = oldhead->va;
-
-			spinlock_acquire(&coremap_lock);
-			int index;
-			index = find_available_page();
-
-			spinlock_release(&coremap_lock);
-
-			lock_acquire(vm_fault_lock);
-
-			//Call change coremap page entry in order to make the page available for you
-			change_coremap_page_entry(index);
-
-			lock_release(vm_fault_lock);
-
-			//Now that particular entry at coremap[new_page_index] is free for you
-
-			//Getting time
-			time_t seconds;
-			uint32_t nanoseconds;
-			gettime(&seconds, &nanoseconds);
-
-			//Update the coremap entries
-			coremap[index].as=new;
-			coremap[index].chunk_allocated=0;
-			coremap[index].page_status=1;		//TODO: CHANGE THIS TO 2 by calling free_old_pages on new address space
-			coremap[index].time=nanoseconds;
-
-			new->page_table->pa = coremap[index].ce_paddr;
-
-			//Zero the region
-			as_zero_region(coremap[index].ce_paddr,1);
-
-			if(oldhead->present== 1)
+			int ind = ((old_ptentry_head->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+			int new_index;
+			if(count_pt==0)
 			{
-				memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),(const void *)PADDR_TO_KVADDR(oldhead->pa),PAGE_SIZE);
+				new->page_table=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
+				new_ptentry_head= new->page_table;
+				new->page_table->pa= alloc_newPage(new,&new_index,old);
+				new->pagelist_head = new->page_table;
+
+				if(old_ptentry_head->present== 1)
+				{
+					if(coremap[ind].as!=old)
+						panic("Old Address table does not match with coremap entry");
+
+					memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),(const void *)PADDR_TO_KVADDR(old_ptentry_head->pa),PAGE_SIZE);
+				}
+				else
+				{
+					swapin_page(old_ptentry_head->pa, old_ptentry_head->swapfile_index);
+				}
+
+				new->page_table->permissions= old_ptentry_head->permissions;
+				new->page_table->present= 1;
+				new->page_table->va= old_ptentry_head->va;
+				new->page_table->swapfile_index=0;
+				coremap[ind].locked=0;
+				old_ptentry_head= old_ptentry_head->next;
+
+				if(old_ptentry_head!= NULL)
+				{
+					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
+					new->page_table= new->page_table->next;
+				}
+				else
+				{
+					new->page_table->next= NULL;
+				}
+				coremap[ind].locked=0;
+				coremap[new_index].locked=0;
+
 			}
 			else
 			{
-				swapin_page(new->page_table->pa, oldhead->swapfile_index);
+				new->page_table->pa= alloc_newPage(new,&new_index,old);
+
+				if(old_ptentry_head->present== 1)
+				{
+					memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),(const void *)PADDR_TO_KVADDR(old_ptentry_head->pa),PAGE_SIZE);
+				}
+				else
+				{
+					swapin_page(old_ptentry_head->pa, old_ptentry_head->swapfile_index);
+				}
+
+				new->page_table->permissions= old_ptentry_head->permissions;
+				new->page_table->present= 1;
+				new->page_table->va= old_ptentry_head->va;
+				new->page_table->swapfile_index=0;
+
+				old_ptentry_head= old_ptentry_head->next;
+
+				if(old_ptentry_head!= NULL)
+				{
+					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
+					new->page_table= new->page_table->next;
+				}
+				else
+				{
+					new->page_table->next= NULL;
+				}
+				coremap[ind].locked=0;
+				coremap[new_index].locked=0;
+
 			}
 
-			if(oldhead->next !=NULL)
-			{
-				new->page_table->next = (struct page_table_entry *) kmalloc(sizeof(struct page_table_entry));
-				new->page_table = new->page_table->next;
-
-				oldhead = oldhead->next;
-			}
-
+			count_pt++;
 
 		}
 
-		new->page_table = new->pagelist_head;
+		//Setting the head to the start of the list
+				//old->page_table= old_ptentry_head;
+				new->page_table= new_ptentry_head;
+				//lock_release(old->lock_page_table);
+
+		new->pagelist_head = new->page_table;
+
 
 		free_old_pages(old);
 		free_old_pages(new);
 
 
-		//Coping rest of the remaining entries in the old structure to new structure
-		check_coremap(5);
+		lock_release(ascopy_lock);
+
+
 
 		*ret = new;
 		return 0;
@@ -505,16 +541,14 @@ void
 free_old_pages(struct addrspace *old)
 {
 	struct page_table_entry *head;
-	head = old->page_table;
+	head = old->pagelist_head;
 
-	while(old->page_table !=NULL)
+	while(head !=NULL)
 	{
-		int index = find_index(old->page_table->pa);
+		int index = find_index(head->pa);
 		coremap[index].page_status=2;
-		old->page_table = old->page_table->next;
+		head = head->next;
 	}
-
-	old->page_table= head;
 
 }
 
@@ -524,7 +558,7 @@ find_index(paddr_t pa)
 {
 	int r=0;
 
-	for(int i=0;i<total_systempages;i++)
+	for(int i=coremap_pages;i<total_systempages;i++)
 	{
 		if(pa == coremap[i].ce_paddr)
 		{
@@ -540,36 +574,27 @@ find_index(paddr_t pa)
 
 
 paddr_t
-alloc_newPage(struct addrspace *new,int *index_x,struct addrspace *old)
+alloc_newPage(struct addrspace *new,int *index,struct addrspace *old)
 {
+	if(old == NULL)
+		panic("OLD IS NULL");
 
 	paddr_t newaddr=0;
-	int index;
+	int new_page_index;
 
 	//Take the coremap lock and find an index to map the entry
 	spinlock_acquire(&coremap_lock);
 
-	index = find_available_page();
+	new_page_index = find_available_page();
 
-	if (coremap[index].as == new)
-	{
-	//	panic("ADDRSPACE FROM NEW GIVEN");
-	}
-	if (coremap[index].as == old)
-	{
-
-	}
-
-
-//	coremap[new_page_index].locked=1;
+	coremap[new_page_index].locked=1;
 
 	spinlock_release(&coremap_lock);
 
 	lock_acquire(vm_fault_lock);
 
 	//Call change coremap page entry in order to make the page available for you
-//	if(coremap[index].page_status!=0)
-		change_coremap_page_entry(index);
+	change_coremap_page_entry(new_page_index);
 
 	lock_release(vm_fault_lock);
 
@@ -581,17 +606,15 @@ alloc_newPage(struct addrspace *new,int *index_x,struct addrspace *old)
 	gettime(&seconds, &nanoseconds);
 
 	//Update the coremap entries
-	coremap[index].as=new;
-	coremap[index].chunk_allocated=0;
-	coremap[index].page_status=2;
-	coremap[index].time=nanoseconds;
+	coremap[new_page_index].as=new;
+	coremap[new_page_index].chunk_allocated=0;
+	coremap[new_page_index].page_status=1;
+	coremap[new_page_index].time=seconds+nanoseconds;
 
-	newaddr = coremap[index].ce_paddr;
-
-	*index_x= index;
-
+	newaddr = coremap[new_page_index].ce_paddr;
+	*index = new_page_index;
 	//Zero the region
-	as_zero_region(coremap[index].ce_paddr,1);
+	as_zero_region(coremap[new_page_index].ce_paddr,1);
 
 	return newaddr;
 
