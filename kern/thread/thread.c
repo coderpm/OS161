@@ -125,10 +125,12 @@ void
 thread_checkstack(struct thread *thread)
 {
 	if (thread->t_stack != NULL) {
+/*
 		KASSERT(((uint32_t*)thread->t_stack)[0] == THREAD_STACK_MAGIC);
 		KASSERT(((uint32_t*)thread->t_stack)[1] == THREAD_STACK_MAGIC);
 		KASSERT(((uint32_t*)thread->t_stack)[2] == THREAD_STACK_MAGIC);
 		KASSERT(((uint32_t*)thread->t_stack)[3] == THREAD_STACK_MAGIC);
+*/
 	}
 }
 
