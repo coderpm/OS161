@@ -331,7 +331,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 {
 
 
-	lock_acquire(ascopy_lock);
+	lock_acquire(vm_fault_lock);
 
 	fix_old_pages(old);
 
@@ -427,14 +427,11 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 
 				if(old_ptentry_head->present== 1)
 				{
-					if(coremap[ind].as!=old)
-						panic("Old Address table does not match with coremap entry");
-
 					memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),(const void *)PADDR_TO_KVADDR(old_ptentry_head->pa),PAGE_SIZE);
 				}
 				else
 				{
-					swapin_page(old_ptentry_head->pa, old_ptentry_head->swapfile_index);
+					swapin_page(new->page_table->pa, old_ptentry_head->swapfile_index);
 				}
 
 				new->page_table->permissions= old_ptentry_head->permissions;
@@ -467,7 +464,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 				}
 				else
 				{
-					swapin_page(old_ptentry_head->pa, old_ptentry_head->swapfile_index);
+					swapin_page(new->page_table->pa, old_ptentry_head->swapfile_index);
 				}
 
 				new->page_table->permissions= old_ptentry_head->permissions;
@@ -507,7 +504,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		free_old_pages(new);
 
 
-		lock_release(ascopy_lock);
+		lock_release(vm_fault_lock);
 
 
 
@@ -591,12 +588,12 @@ alloc_newPage(struct addrspace *new,int *index,struct addrspace *old)
 
 	spinlock_release(&coremap_lock);
 
-	lock_acquire(vm_fault_lock);
+//	lock_acquire(vm_fault_lock);
 
 	//Call change coremap page entry in order to make the page available for you
 	change_coremap_page_entry(new_page_index);
 
-	lock_release(vm_fault_lock);
+//	lock_release(vm_fault_lock);
 
 	//Now that particular entry at coremap[new_page_index] is free for you
 
@@ -609,7 +606,7 @@ alloc_newPage(struct addrspace *new,int *index,struct addrspace *old)
 	coremap[new_page_index].as=new;
 	coremap[new_page_index].chunk_allocated=0;
 	coremap[new_page_index].page_status=1;
-	coremap[new_page_index].time=seconds+nanoseconds;
+	coremap[new_page_index].time=nanoseconds;
 
 	newaddr = coremap[new_page_index].ce_paddr;
 	*index = new_page_index;
