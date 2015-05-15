@@ -331,7 +331,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 {
 
 
-	lock_acquire(vm_fault_lock);
+	lock_acquire(ascopy_lock);
 
 	fix_old_pages(old);
 
@@ -504,7 +504,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		free_old_pages(new);
 
 
-		lock_release(vm_fault_lock);
+		lock_release(ascopy_lock);
 
 
 
@@ -588,12 +588,12 @@ alloc_newPage(struct addrspace *new,int *index,struct addrspace *old)
 
 	spinlock_release(&coremap_lock);
 
-//	lock_acquire(vm_fault_lock);
+	lock_acquire(vm_fault_lock);
 
 	//Call change coremap page entry in order to make the page available for you
 	change_coremap_page_entry(new_page_index);
 
-//	lock_release(vm_fault_lock);
+	lock_release(vm_fault_lock);
 
 	//Now that particular entry at coremap[new_page_index] is free for you
 

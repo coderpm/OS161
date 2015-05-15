@@ -939,11 +939,7 @@ handle_address(vaddr_t faultaddr,int permissions,struct addrspace *as,int faultt
 						break;
 					}
 
-					if(coremap[index].as->page_table != coremap[index].as->pagelist_head)
-						panic("Head does not match with page table head in PRESENT==1");
 
-					if(as->page_table != as->pagelist_head)
-						panic("Head does not match with page table head in PRESENT==1 while checking the address");
 
 
 					spinlock_release(&coremap_lock);
