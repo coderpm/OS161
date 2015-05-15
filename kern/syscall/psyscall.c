@@ -157,16 +157,8 @@ sys___getpid(int32_t *retval)
 int
 sys___waitpid(int processid,userptr_t  status,int options, int32_t *retval)
 {
-	//pid_t pid_process= (int32_t) processid;
 	int exit_code;
 	int result;
-
-//	userptr_t user_status;
-
-/*
-	if(processid<PID_MIN)
-		return ESRCH;
-*/
 
 	if( options!=0){
 		return EINVAL;
@@ -241,16 +233,7 @@ sys___waitpid(int processid,userptr_t  status,int options, int32_t *retval)
 int
 sys___kwaitpid(int processid,int *status,int options, int32_t *retval)
 {
-	//pid_t pid_process= (int32_t) processid;
 	int exit_code;
-//	int result;
-
-//	userptr_t user_status;
-
-/*
-	if(processid<PID_MIN)
-		return ESRCH;
-*/
 
 	if( options!=0){
 		return EINVAL;
@@ -597,8 +580,18 @@ sys___execv(char * p_name,char **ar )
 
 //Addition by Mohit
 int
-sys___sbrk(int amount, int *retval){
+sys___sbrk(int amount, int *retval)
+{
+	if(amount <0)
+		return EINVAL;
+
 	struct addrspace *as = curthread->t_addrspace;
+
+	if(as->heap_end+amount > 0x40000000)
+		return ENOMEM;
+
+
+
 	if((as->heap_end+amount)< as->heap_start){
 		return EINVAL;
 	}
@@ -606,8 +599,6 @@ sys___sbrk(int amount, int *retval){
 		amount = amount + (amount%4);
 	}
 	vaddr_t heap_end= as->heap_end;
-	/*amount += heap_end & ~(vaddr_t)PAGE_FRAME;
-	amount = (amount + PAGE_SIZE - 1) & PAGE_FRAME;*/
 
 	if((heap_end+amount)>= as->stackbase_base){
 		return ENOMEM;

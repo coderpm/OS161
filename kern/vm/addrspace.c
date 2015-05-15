@@ -328,6 +328,8 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
+	lock_acquire(vm_fault_lock);
+
 	struct addrspace *new;
 	//Creating new address space calling as create, which will initialize lock also;
 	new = as_create();
@@ -479,7 +481,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 
 		//Coping rest of the remaining entries in the old structure to new structure
 
-
+		lock_release(vm_fault_lock);
 
 		*ret = new;
 		return 0;
@@ -635,12 +637,12 @@ paddr_t alloc_newPage(struct addrspace *new)
 
 	spinlock_release(&coremap_lock);
 
-	lock_acquire(vm_fault_lock);
+//	lock_acquire(vm_fault_lock);
 
 	//Call change coremap page entry in order to make the page available for you
 	change_coremap_page_entry(new_page_index);
 
-	lock_release(vm_fault_lock);
+//	lock_release(vm_fault_lock);
 
 	//Now that particular entry at coremap[new_page_index] is free for you
 

@@ -281,7 +281,7 @@ alloc_kpages(int npages)
 		}
 		else if(npages >1)
 		{
-			panic("CHANGE PAGE ENTRY DOES NOT WORK HERE IN NPAGES>1");
+			//panic("CHANGE PAGE ENTRY DOES NOT WORK HERE IN NPAGES>1");
 			spinlock_acquire(&coremap_lock);
 			int index = find_page_available(npages);
 			if(index<0)
@@ -294,14 +294,21 @@ alloc_kpages(int npages)
 				for(int i =index;i<index+npages;i++)
 				{
 					//Take the page table lock
-					lock_acquire(coremap[index].as->lock_page_table);
+				//	lock_acquire(coremap[index].as->lock_page_table);
 
 
 					//TODO:: CHNAGE THIS
 //					change_page_entry(i);
 
 					//Release page table lock
-					lock_release(coremap[index].as->lock_page_table);
+					//lock_release(coremap[index].as->lock_page_table);
+
+					lock_acquire(vm_fault_lock);
+
+					change_coremap_page_entry(i);
+
+					lock_release(vm_fault_lock);
+
 
 					va = PADDR_TO_KVADDR(coremap[index].ce_paddr);
 
