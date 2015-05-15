@@ -68,9 +68,6 @@ as_create(void)
 
 	as->regions=NULL;
 
-	as->pagelist_head=NULL;
-	as->num_pages =0;
-
 	return as;
 }
 
@@ -91,12 +88,14 @@ as_destroy(struct addrspace *as)
 		}
 		struct page_table_entry *next_page= as->page_table;
 		while(as->page_table!= NULL){
+			lock_acquire(as->lock_page_table);
 			next_page = as->page_table->next;
 			if(as->page_table->present==0){
 				//Acquiring lock for swap array
-
+				lock_acquire(swap_lock);
 					swap_info[as->page_table->swapfile_index]->va= 0;
-
+				lock_release(swap_lock);
+				//Release lock for swap array
 			}
 			else{
 				page_free(as->page_table->pa);
@@ -105,6 +104,7 @@ as_destroy(struct addrspace *as)
 			as->page_table->present=0;
 			as->page_table->va=0;
 			as->page_table->swapfile_index=0;
+			lock_release(as->lock_page_table);
 			kfree(as->page_table);
 			as->page_table= next_page;
 		}
@@ -329,75 +329,51 @@ as_define_stack(struct addrspace *as, vaddr_t *stackptr)
 int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
-
-
-	lock_acquire(ascopy_lock);
-
-	fix_old_pages(old);
-
 	struct addrspace *new;
-
-	//Creating new address space calling as create, which will initialize lock also;
-	new = as_create();
-	if (new==NULL)
-	{
-		return ENOMEM;
-	}
-
-	//Coping addr_regions to new address space addr_regions structure
-	struct addr_regions *newregionshead;
-	struct addr_regions *oldregionshead;
-	oldregionshead = old->regions;
-	int count=0;
-
-	while(old->regions !=NULL)
-	{
-		if(count==0)
-		{
-
-			new->regions=(struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
-
-
-			newregionshead= new->regions;
-			new->regions->va_start= old->regions->va_start;
-			new->regions->region_numpages= old->regions->region_numpages;
-			new->regions->set_permissions= old->regions->set_permissions;
-			new->regions->va_end= old->regions->va_end;
-			old->regions= old->regions->next_region;
-			if(old->regions!= NULL)
-			{
-
-				new->regions->next_region= (struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
-
-				new->regions= new->regions->next_region;
-			}
-			else
-			{
-				new->regions->next_region= NULL;
-			}
-
+		//Creating new address space calling as create, which will initialize lock also;
+		new = as_create();
+		if (new==NULL) {
+			return ENOMEM;
 		}
-		else
+		//Coping addr_regions to new address space addr_regions structure
+		struct addr_regions *newregionshead;
+		struct addr_regions *oldregionshead;
+			 oldregionshead = old->regions;
+		int count=0;
+		while(old->regions !=NULL)
 		{
+			if(count==0){
+				new->regions=(struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
+				newregionshead= new->regions;
 				new->regions->va_start= old->regions->va_start;
 				new->regions->region_numpages= old->regions->region_numpages;
 				new->regions->set_permissions= old->regions->set_permissions;
 				new->regions->va_end= old->regions->va_end;
 				old->regions= old->regions->next_region;
 				if(old->regions!= NULL){
-
 					new->regions->next_region= (struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
-
 					new->regions= new->regions->next_region;
 				}
-				else
-				{
+				else{
+					new->regions->next_region= NULL;
+				}
+			}
+			else{
+				new->regions->va_start= old->regions->va_start;
+				new->regions->region_numpages= old->regions->region_numpages;
+				new->regions->set_permissions= old->regions->set_permissions;
+				new->regions->va_end= old->regions->va_end;
+				old->regions= old->regions->next_region;
+				if(old->regions!= NULL){
+					new->regions->next_region= (struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
+					new->regions= new->regions->next_region;
+				}
+				else{
 					new->regions->next_region= NULL;
 				}
 			}
 		count++;
 		}
-
 		//Setting the pointer to the start of the list
 		old->regions= oldregionshead;
 		new->regions= newregionshead;
@@ -406,196 +382,89 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		new->stackbase_base= old->stackbase_base;
 		new->stackbase_top= old->stackbase_top;
 
-
-		//Copy the page tables
 		//Coping page table to new address space page table structure
+		//lock_acquire(old->lock_page_table);
 		struct page_table_entry *new_ptentry_head;
 		struct page_table_entry *old_ptentry_head;
 		old_ptentry_head = old->page_table;
 		int count_pt= 0;
-
-		while(old_ptentry_head != NULL)
-		{
-			int ind = ((old_ptentry_head->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
-			int new_index;
-			if(count_pt==0)
-			{
+		while(old->page_table != NULL){
+			if(count_pt==0){
 				new->page_table=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
 				new_ptentry_head= new->page_table;
-				new->page_table->pa= alloc_newPage(new,&new_index,old);
-				new->pagelist_head = new->page_table;
-
-				if(old_ptentry_head->present== 1)
-				{
-					memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),(const void *)PADDR_TO_KVADDR(old_ptentry_head->pa),PAGE_SIZE);
+				new->page_table->pa= alloc_newPage(new);
+				if(old->page_table->present== 1){
+					memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
+							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
+								PAGE_SIZE);
+				}else{
+					swapin_page(old->page_table->pa, old->page_table->swapfile_index);
+//					read_page(old->page_table->pa, old->page_table->swapfile_index);
 				}
-				else
-				{
-					swapin_page(new->page_table->pa, old_ptentry_head->swapfile_index);
-				}
-
-				new->page_table->permissions= old_ptentry_head->permissions;
+				new->page_table->permissions= old->page_table->permissions;
 				new->page_table->present= 1;
-				new->page_table->va= old_ptentry_head->va;
+				new->page_table->va= old->page_table->va;
 				new->page_table->swapfile_index=0;
-				coremap[ind].locked=0;
-				old_ptentry_head= old_ptentry_head->next;
-
-				if(old_ptentry_head!= NULL)
-				{
+				old->page_table= old->page_table->next;
+				if(old->page_table!= NULL){
 					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
 					new->page_table= new->page_table->next;
 				}
-				else
-				{
+				else{
 					new->page_table->next= NULL;
 				}
-				coremap[ind].locked=0;
-				coremap[new_index].locked=0;
-
 			}
-			else
-			{
-				new->page_table->pa= alloc_newPage(new,&new_index,old);
-
-				if(old_ptentry_head->present== 1)
-				{
-					memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),(const void *)PADDR_TO_KVADDR(old_ptentry_head->pa),PAGE_SIZE);
+			else{
+				new->page_table->pa= alloc_newPage(new);
+				if(old->page_table->present== 1){
+						memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),
+							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
+								PAGE_SIZE);
+				}else{
+					swapin_page(old->page_table->pa, old->page_table->swapfile_index);
+//					read_page(old->page_table->pa, old->page_table->swapfile_index);
 				}
-				else
-				{
-					swapin_page(new->page_table->pa, old_ptentry_head->swapfile_index);
-				}
-
-				new->page_table->permissions= old_ptentry_head->permissions;
+				new->page_table->permissions= old->page_table->permissions;
 				new->page_table->present= 1;
-				new->page_table->va= old_ptentry_head->va;
+				new->page_table->va= old->page_table->va;
 				new->page_table->swapfile_index=0;
-
-				old_ptentry_head= old_ptentry_head->next;
-
-				if(old_ptentry_head!= NULL)
-				{
+				old->page_table= old->page_table->next;
+				if(old->page_table!= NULL){
 					new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
 					new->page_table= new->page_table->next;
 				}
-				else
-				{
+				else{
 					new->page_table->next= NULL;
 				}
-				coremap[ind].locked=0;
-				coremap[new_index].locked=0;
-
 			}
-
 			count_pt++;
-
 		}
-
 		//Setting the head to the start of the list
-				//old->page_table= old_ptentry_head;
-				new->page_table= new_ptentry_head;
-				//lock_release(old->lock_page_table);
+		old->page_table= old_ptentry_head;
+		new->page_table= new_ptentry_head;
+		//lock_release(old->lock_page_table);
 
-		new->pagelist_head = new->page_table;
-
-
-		free_old_pages(old);
-		free_old_pages(new);
-
-
-		lock_release(ascopy_lock);
+		//Coping rest of the remaining entries in the old structure to new structure
 
 
 
 		*ret = new;
 		return 0;
 
-
-
 }
 
-
-
-void
-fix_old_pages(struct addrspace *old)
-{
-	struct page_table_entry *head;
-	head = old->page_table;
-
-	while(old->page_table !=NULL)
-	{
-		int index = find_index(old->page_table->pa);
-		coremap[index].page_status=1;
-		old->page_table = old->page_table->next;
-	}
-
-	old->page_table= head;
-
-}
-
-void
-free_old_pages(struct addrspace *old)
-{
-	struct page_table_entry *head;
-	head = old->pagelist_head;
-
-	while(head !=NULL)
-	{
-		int index = find_index(head->pa);
-		coremap[index].page_status=2;
-		head = head->next;
-	}
-
-}
-
-
-int
-find_index(paddr_t pa)
-{
-	int r=0;
-
-	for(int i=coremap_pages;i<total_systempages;i++)
-	{
-		if(pa == coremap[i].ce_paddr)
-		{
-			r = i;
-			break;
-		}
-	}
-
-	if(r==0)
-		panic("NO index found in find_index");
-	return r;
-}
-
-
-paddr_t
-alloc_newPage(struct addrspace *new,int *index,struct addrspace *old)
-{
-	if(old == NULL)
-		panic("OLD IS NULL");
+paddr_t alloc_newPage(struct addrspace *new){
 
 	paddr_t newaddr=0;
-	int new_page_index;
+	int index;
 
-	//Take the coremap lock and find an index to map the entry
 	spinlock_acquire(&coremap_lock);
 
-	new_page_index = find_available_page();
-
-	coremap[new_page_index].locked=1;
-
-	spinlock_release(&coremap_lock);
-
-	lock_acquire(vm_fault_lock);
-
-	//Call change coremap page entry in order to make the page available for you
-	change_coremap_page_entry(new_page_index);
-
-	lock_release(vm_fault_lock);
-
-	//Now that particular entry at coremap[new_page_index] is free for you
+	index = find_available_page();
+	//Get the index of the the page which has to be swapped out
+	vaddr_t tlb_vaddr;
+	int swapout_index;
+	swapout_index = change_page_entry(index,&tlb_vaddr);
 
 	//Getting time
 	time_t seconds;
@@ -603,120 +472,28 @@ alloc_newPage(struct addrspace *new,int *index,struct addrspace *old)
 	gettime(&seconds, &nanoseconds);
 
 	//Update the coremap entries
-	coremap[new_page_index].as=new;
-	coremap[new_page_index].chunk_allocated=0;
-	coremap[new_page_index].page_status=1;
-	coremap[new_page_index].time=nanoseconds;
+	coremap[index].as=new;
+	coremap[index].chunk_allocated=0;
+	coremap[index].page_status=2;
+	coremap[index].time=seconds+nanoseconds;
 
-	newaddr = coremap[new_page_index].ce_paddr;
-	*index = new_page_index;
+	newaddr = coremap[index].ce_paddr;
+
+	//Release the coremap lock
+	spinlock_release(&coremap_lock);
+
+
+	if(swapout_index>0)
+	{
+		my_tlb_shhotdown(tlb_vaddr);
+		//Means the existing page needs to be swapped out
+		swapout_page(newaddr,swapout_index);
+	}
+
 	//Zero the region
-	as_zero_region(coremap[new_page_index].ce_paddr,1);
+	as_zero_region(coremap[index].ce_paddr,1);
 
 	return newaddr;
 
 }
 
-/*
-struct page_table_entry*
-pagetable_copy(struct page_table_entry *oldpage,struct addrspace *as)
-{
-
-
-	//Coping page table to new address space page table structure
-			struct page_table_entry *new_ptentry_head;
-			struct page_table_entry *old_ptentry_head;
-			old_ptentry_head = old->page_table;
-			int count_pt= 0;
-
-			while(old_ptentry_head != NULL)
-			{
-				int ind = ((old_ptentry_head->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
-		//		coremap[ind].locked=1;
-				int new_index;
-				if(count_pt==0)
-				{
-
-					new->page_table=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
-					new_ptentry_head= new->page_table;
-					new->page_table->pa= alloc_newPage(new,&new_index,old);
-					new->pagelist_head = new->page_table;
-
-					if(old_ptentry_head->present== 1)
-					{
-						if(coremap[ind].as!=old)
-							panic("Old Address table does not match with coremap entry");
-
-						memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),(const void *)PADDR_TO_KVADDR(old_ptentry_head->pa),PAGE_SIZE);
-					}
-					else
-					{
-						swapin_page(old_ptentry_head->pa, old_ptentry_head->swapfile_index);
-					}
-
-					new->page_table->permissions= old_ptentry_head->permissions;
-					new->page_table->present= 1;
-					new->page_table->va= old_ptentry_head->va;
-					new->page_table->swapfile_index=0;
-					coremap[ind].locked=0;
-					old_ptentry_head= old_ptentry_head->next;
-
-					if(old_ptentry_head!= NULL)
-					{
-						new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
-						new->page_table= new->page_table->next;
-					}
-					else
-					{
-						new->page_table->next= NULL;
-					}
-					coremap[ind].locked=0;
-					coremap[new_index].locked=0;
-				}
-				else
-				{
-					new->page_table->pa= alloc_newPage(new,&new_index,old);
-
-					if(old_ptentry_head->present== 1)
-					{
-						memmove((void *)PADDR_TO_KVADDR(new->page_table->pa),(const void *)PADDR_TO_KVADDR(old_ptentry_head->pa),PAGE_SIZE);
-					}
-					else
-					{
-						swapin_page(old_ptentry_head->pa, old_ptentry_head->swapfile_index);
-					}
-
-					new->page_table->permissions= old_ptentry_head->permissions;
-					new->page_table->present= 1;
-					new->page_table->va= old_ptentry_head->va;
-					new->page_table->swapfile_index=0;
-
-					old_ptentry_head= old_ptentry_head->next;
-
-					if(old_ptentry_head!= NULL)
-					{
-						new->page_table->next=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
-						new->page_table= new->page_table->next;
-					}
-					else
-					{
-						new->page_table->next= NULL;
-					}
-					coremap[ind].locked=0;
-					coremap[new_index].locked=0;
-				}
-				count_pt++;
-			}
-
-			//Setting the head to the start of the list
-			//old->page_table= old_ptentry_head;
-			new->page_table= new_ptentry_head;
-			//lock_release(old->lock_page_table);
-
-
-
-
-
-
-}
-*/
