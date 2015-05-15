@@ -92,10 +92,9 @@ as_destroy(struct addrspace *as)
 			next_page = as->page_table->next;
 			if(as->page_table->present==0){
 				//Acquiring lock for swap array
-				lock_acquire(swap_lock);
+
 					swap_info[as->page_table->swapfile_index]->va= 0;
-				lock_release(swap_lock);
-				//Release lock for swap array
+
 			}
 			else{
 				page_free(as->page_table->pa);
@@ -330,35 +329,43 @@ int
 as_copy(struct addrspace *old, struct addrspace **ret)
 {
 	struct addrspace *new;
-		//Creating new address space calling as create, which will initialize lock also;
-		new = as_create();
-		if (new==NULL) {
-			return ENOMEM;
-		}
-		//Coping addr_regions to new address space addr_regions structure
-		struct addr_regions *newregionshead;
-		struct addr_regions *oldregionshead;
-			 oldregionshead = old->regions;
-		int count=0;
-		while(old->regions !=NULL)
+	//Creating new address space calling as create, which will initialize lock also;
+	new = as_create();
+	if (new==NULL)
+	{
+		return ENOMEM;
+	}
+
+	//Coping addr_regions to new address space addr_regions structure
+	struct addr_regions *newregionshead;
+	struct addr_regions *oldregionshead;
+	oldregionshead = old->regions;
+	int count=0;
+
+	while(old->regions !=NULL)
+	{
+		if(count==0)
 		{
-			if(count==0){
-				new->regions=(struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
-				newregionshead= new->regions;
-				new->regions->va_start= old->regions->va_start;
-				new->regions->region_numpages= old->regions->region_numpages;
-				new->regions->set_permissions= old->regions->set_permissions;
-				new->regions->va_end= old->regions->va_end;
-				old->regions= old->regions->next_region;
-				if(old->regions!= NULL){
-					new->regions->next_region= (struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
-					new->regions= new->regions->next_region;
-				}
-				else{
-					new->regions->next_region= NULL;
-				}
+			new->regions=(struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
+			newregionshead= new->regions;
+			new->regions->va_start= old->regions->va_start;
+			new->regions->region_numpages= old->regions->region_numpages;
+			new->regions->set_permissions= old->regions->set_permissions;
+			new->regions->va_end= old->regions->va_end;
+			old->regions= old->regions->next_region;
+			if(old->regions!= NULL)
+			{
+				new->regions->next_region= (struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
+				new->regions= new->regions->next_region;
 			}
-			else{
+			else
+			{
+				new->regions->next_region= NULL;
+			}
+
+		}
+		else
+		{
 				new->regions->va_start= old->regions->va_start;
 				new->regions->region_numpages= old->regions->region_numpages;
 				new->regions->set_permissions= old->regions->set_permissions;
@@ -368,12 +375,38 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 					new->regions->next_region= (struct addr_regions*) kmalloc(sizeof(struct addr_regions ));
 					new->regions= new->regions->next_region;
 				}
-				else{
+				else
+				{
 					new->regions->next_region= NULL;
 				}
 			}
 		count++;
 		}
+
+		//Setting the pointer to the start of the list
+		old->regions= oldregionshead;
+		new->regions= newregionshead;
+		new->heap_end= old->heap_end;
+		new->heap_start= old->heap_start;
+		new->stackbase_base= old->stackbase_base;
+		new->stackbase_top= old->stackbase_top;
+
+		//Coping page table to new address space page table structure
+		//lock_acquire(old->lock_page_table);
+//		struct page_table_entry *new_ptentry_head;
+//		int count_pt= 0;
+
+
+/*
+		//Call copy function to copy the link list from old to new pagetable
+		pagetable_copy(old->page_table,&new->page_table,new);
+
+
+
+		*ret = new;
+		return 0;
+*/
+
 		//Setting the pointer to the start of the list
 		old->regions= oldregionshead;
 		new->regions= newregionshead;
@@ -389,7 +422,8 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		old_ptentry_head = old->page_table;
 		int count_pt= 0;
 		while(old->page_table != NULL){
-			if(count_pt==0){
+			if(count_pt==0)
+			{
 				new->page_table=(struct page_table_entry*) kmalloc(sizeof(struct page_table_entry));
 				new_ptentry_head= new->page_table;
 				new->page_table->pa= alloc_newPage(new);
@@ -398,7 +432,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
 								PAGE_SIZE);
 				}else{
-					swapin_page(old->page_table->pa, old->page_table->swapfile_index);
+					swapin_page(new->page_table->pa, old->page_table->swapfile_index);
 //					read_page(old->page_table->pa, old->page_table->swapfile_index);
 				}
 				new->page_table->permissions= old->page_table->permissions;
@@ -421,8 +455,7 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 							(const void *)PADDR_TO_KVADDR(old->page_table->pa),
 								PAGE_SIZE);
 				}else{
-					swapin_page(old->page_table->pa, old->page_table->swapfile_index);
-//					read_page(old->page_table->pa, old->page_table->swapfile_index);
+					swapin_page(new->page_table->pa, old->page_table->swapfile_index);
 				}
 				new->page_table->permissions= old->page_table->permissions;
 				new->page_table->present= 1;
@@ -451,20 +484,165 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		*ret = new;
 		return 0;
 
+
+
 }
 
-paddr_t alloc_newPage(struct addrspace *new){
+
+
+/*
+void
+pagetable_copy(struct page_table_entry *old,struct page_table_entry **new,struct addrspace *as)
+{
+	struct page_table_entry *tmp;
+	struct page_table_entry *tmp1=NULL;
+	int old_page_index;
+	int new_page_index;
+
+
+    for(tmp = old; tmp!= NULL; tmp = tmp1)
+    {
+        struct page_table_entry *temp = (struct page_table_entry *) kmalloc(sizeof(struct page_table_entry));
+
+        if(tmp->present==1)
+        {
+        	//Means old page is in memory
+			old_page_index = ((old->pa - coremap[coremap_pages].ce_paddr)/PAGE_SIZE)+ coremap_pages;
+
+			//Take the coremap lock and find an index to map the entry
+			spinlock_acquire(&coremap_lock);
+
+			coremap[old_page_index].locked=1;
+
+			new_page_index = find_available_page();
+
+			coremap[new_page_index].locked=1;
+
+			spinlock_release(&coremap_lock);
+
+			lock_acquire(vm_fault_lock);
+
+			//Call change coremap page entry in order to make the page available for you
+			change_coremap_page_entry(new_page_index);
+
+			lock_release(vm_fault_lock);
+
+			//Now that particular entry at coremap[new_page_index] is free for you
+			//Getting time
+			time_t seconds;
+			uint32_t nanoseconds;
+			gettime(&seconds, &nanoseconds);
+
+			//Update the coremap entries
+			coremap[new_page_index ].as=as;
+			coremap[new_page_index ].chunk_allocated=0;
+			coremap[new_page_index ].page_status=2;
+			coremap[new_page_index ].time=seconds;
+
+			//Zero the region
+			as_zero_region(coremap[new_page_index ].ce_paddr,1);
+
+			//Now the move the data into new pa
+			memmove((void *)PADDR_TO_KVADDR(coremap[new_page_index ].ce_paddr),(const void *)PADDR_TO_KVADDR(old->pa),PAGE_SIZE);
+
+			coremap[old_page_index].locked=0;
+
+
+        }
+        else if(tmp->present==0)
+        {
+			//Means the page is in disk -- copy to page from the disk
+			spinlock_acquire(&coremap_lock);
+
+			new_page_index = find_available_page();
+
+			coremap[new_page_index].locked=1;
+
+			spinlock_release(&coremap_lock);
+			lock_acquire(vm_fault_lock);
+
+			//Call change coremap page entry in order to make the page available for you
+			change_coremap_page_entry(new_page_index);
+
+			lock_release(vm_fault_lock);
+			//Now that particular entry at coremap[new_page_index] is free for you
+
+			//Getting time
+			time_t seconds;
+			uint32_t nanoseconds;
+			gettime(&seconds, &nanoseconds);
+
+			//Update the coremap entries
+			coremap[new_page_index ].as=as;
+			coremap[new_page_index ].chunk_allocated=0;
+			coremap[new_page_index ].page_status=2;
+			coremap[new_page_index ].time=seconds;
+
+			if(old->swapfile_index==0)
+				panic("Problem is as copy that no index in swapfile is present to swapin");
+
+			//Zero the region
+			as_zero_region(coremap[new_page_index ].ce_paddr,1);
+
+			swapin_page(coremap[new_page_index].ce_paddr, old->swapfile_index);
+
+
+        }
+
+        temp->pa = coremap[new_page_index].ce_paddr;
+        temp->permissions= tmp->permissions;
+        temp->present=1;
+        temp->swapfile_index=0;
+        temp->va = tmp->va;
+
+        temp->next = tmp->next;
+        tmp->next = temp;
+
+		coremap[new_page_index ].locked=0;
+
+
+        tmp1 = temp->next;
+        if ( *new == NULL )
+            *new = temp;
+    }
+
+    for(tmp = old; tmp!= NULL; tmp = tmp->next)
+    {
+        tmp1 = tmp->next;
+        tmp->next = tmp->next->next;
+        if (tmp1->next != NULL )
+            tmp1->next = tmp1->next->next;
+        else
+            tmp1->next = NULL;
+    }
+
+}
+*/
+
+
+paddr_t alloc_newPage(struct addrspace *new)
+{
 
 	paddr_t newaddr=0;
-	int index;
+	int new_page_index;
 
+	//Take the coremap lock and find an index to map the entry
 	spinlock_acquire(&coremap_lock);
 
-	index = find_available_page();
-	//Get the index of the the page which has to be swapped out
-	vaddr_t tlb_vaddr;
-	int swapout_index;
-	swapout_index = change_page_entry(index,&tlb_vaddr);
+	new_page_index = find_available_page();
+
+	coremap[new_page_index].locked=1;
+
+	spinlock_release(&coremap_lock);
+
+	lock_acquire(vm_fault_lock);
+
+	//Call change coremap page entry in order to make the page available for you
+	change_coremap_page_entry(new_page_index);
+
+	lock_release(vm_fault_lock);
+
+	//Now that particular entry at coremap[new_page_index] is free for you
 
 	//Getting time
 	time_t seconds;
@@ -472,28 +650,17 @@ paddr_t alloc_newPage(struct addrspace *new){
 	gettime(&seconds, &nanoseconds);
 
 	//Update the coremap entries
-	coremap[index].as=new;
-	coremap[index].chunk_allocated=0;
-	coremap[index].page_status=2;
-	coremap[index].time=seconds+nanoseconds;
+	coremap[new_page_index].as=new;
+	coremap[new_page_index].chunk_allocated=0;
+	coremap[new_page_index].page_status=2;
+	coremap[new_page_index].time=seconds+nanoseconds;
 
-	newaddr = coremap[index].ce_paddr;
+	newaddr = coremap[new_page_index].ce_paddr;
 
-	//Release the coremap lock
-	spinlock_release(&coremap_lock);
-
-
-	if(swapout_index>0)
-	{
-		my_tlb_shhotdown(tlb_vaddr);
-		//Means the existing page needs to be swapped out
-		swapout_page(newaddr,swapout_index);
-	}
 
 	//Zero the region
-	as_zero_region(coremap[index].ce_paddr,1);
+	as_zero_region(coremap[new_page_index].ce_paddr,1);
 
 	return newaddr;
 
 }
-
