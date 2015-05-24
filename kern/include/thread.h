@@ -118,11 +118,7 @@ struct thread {
 
 	/* add more here as needed */
 
-	/*Added By Mohit
-	 * started
-	 */
 	struct file_descriptor *file_table[__OPEN_MAX];
-	/* Ended */
 
 
 	/*
@@ -185,7 +181,6 @@ void schedule(void);
  */
 void thread_consider_migration(void);
 
-//Added by Mohit
 void my_tlb_shhotdown(vaddr_t tlb_vaddr);
 
 #endif /* _THREAD_H_ */

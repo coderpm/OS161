@@ -30,7 +30,6 @@
 /*
  * Main.
  */
-// "Adding for git" marora3@buffalo.edu
 
 #include <types.h>
 #include <kern/errno.h>
@@ -104,7 +103,7 @@ boot(void)
 	kprintf("prathamm@buffalo.edu's system version %s (%s #%d)\n",
 		GROUP_VERSION, buildconfig, buildversion);
 */
-	kprintf("Pratham and Mohit's OS161 system version %s (%s #%d)\n",
+	kprintf("Pratham's OS161 system version %s (%s #%d)\n",
 		GROUP_VERSION, buildconfig, buildversion);
 	kprintf("\n");
 

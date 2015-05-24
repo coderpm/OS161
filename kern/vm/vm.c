@@ -751,9 +751,6 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	splx(spl);
 	return 0;
 
-
-
-
 	kprintf("MY vm: Ran out of TLB entries - cannot handle page fault\n");
 		splx(spl);
 		return EFAULT;

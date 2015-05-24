@@ -101,12 +101,6 @@ runprogram(char *progname)
 		return result;
 	}
 
-	/*
-	* Added By Mohit
-	*
-	* Started for file table initialization
-	*/
-
 	char **karray= kmalloc(sizeof(char**));
 	size_t final_stack=0;
 	int string_length = strlen(progname)+1;
@@ -189,16 +183,8 @@ runprogram(char *progname)
 			return result;
 		}
 
-/*
- * Added By Mohit Arora
- *  8Th April
- */
 
 
-/**
- * Author: Mohit Arora
- * Initialing the file table
- */
 
 	int result1=100;
 	//kprintf("Inside run program");

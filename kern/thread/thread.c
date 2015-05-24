@@ -179,10 +179,6 @@ thread_create(const char *name)
 
 	/* If you add to struct thread, be sure to initialize here */
 
-	/*Added BY Mohit
-	 *started
-	 */
-	/*Ended*/
 
 	/**
 	 * Author: Pratham Malik
